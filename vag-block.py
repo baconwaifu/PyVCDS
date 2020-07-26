@@ -38,7 +38,7 @@ scalers = {
 0x1A: blockMeasure("°C", lambda a,b: b-a),
 0x21: blockMeasure("%", lambda a,b: b*100 if a == 0 else (b*100)/a), #same unit, different scaling.
 0x22: blockMeasure("kW", lambda a,b: (b - 128)*.01*a),
-0x23: blockMeasure("1/h", lambda a,b: (a*b)/100),
+0x23: blockMeasure("/h", lambda a,b: (a*b)/100),
 0x25: blockMeasure("binary", lambda a,b: (a << 8) | b),
 0x27: blockMeasure("mg/stroke (fuel)", lambda a,b: (a*b)/256),
 0x31: blockMeasure("mg/stroke (air)", lambda a,b: (a*b)/40),
@@ -66,6 +66,7 @@ def labelBlock(ecu, blknum, blk):
     blk.label = labels[(ecu,blknum)][i]
 
 if __name__ == "__main__":
+  import sys, argparse
   sock = can.interface.Bus(channel='vcan0', bustype='socketcan')
   stack = vwtp.VWTPStack(sock)
 
@@ -73,6 +74,6 @@ if __name__ == "__main__":
   kw = kwp.KWPSession(conn)
   with conn:
     assert kw.request("startDiagnosticSession", 0x89) == b'\x50\x89' #positive response, same value.
-    print(parseBlock(kw.request("readDataByLocalIdentifier", 0x14)))
+    print(parseBlock(kw.request("readDataByLocalIdentifier", 0x2)))
   kw.close()
-  import sys; sys.exit(0) #need to do this because of threads.
+  sys.exit(0) #need to do this because of threads.
