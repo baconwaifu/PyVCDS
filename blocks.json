@@ -1,0 +1,17 @@
+{
+  "0x01": {
+    "0x01": "Basic Engine",
+    "0x02": "Engine Performance",
+    "0x03": "Throttle Performance",
+    "0x04": "Battery and Air temp",
+    "0x05": "Engine Acceleration Tuning",
+    "0x06": "Altitude Air Intake Tuning",
+    "0x07": "Air intake tuning",
+    "0x08": "Braking Systems Tuning"
+  },
+  "all": {
+    "0x50": "Manufacture Mark",
+    "0x51": "Serial Numbers",
+    "0x52": "Revision Info"
+  }
+}
