@@ -125,7 +125,7 @@ class OBD2Interface:
           pid = buf[2]
           self.buffers[msg.arbitration_id].put(buf[1:l+2])
 
-  def getVIN(self):
+  def readVIN(self):
     send(0x7DF, [0x9, 0x2])
     for k,b in buffers.items():
       buf = bytearray()

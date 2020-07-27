@@ -44,8 +44,7 @@ def oem(vin):
   while True:
     if vin.startswith("WVW"): #Volkswagen
       import vwtp, kwp, vw
-      stack = vwtp.VWTPStack(socket)
-      with vw.VWVehicle(stack) as car:
+      with vwtp.VWTPStack(socket) as stack, vw.VWVehicle(stack) as car:
         opt = ["Enumerate Modules", "Read DTCs by module", "Read Measuring Data Block by module", "Long-Coding", "Load Labels from VCDS", "Load Labels from JSON", "Back"]
         op = selector(opt)
         if op == 0:
@@ -58,7 +57,7 @@ def oem(vin):
           for mod in car.enabled:
             print("Checking module '{}'".format(vw.modules[mod]))
             with car.module(mod) as m:
-              dtc = m.getDTC()
+              dtc = m.readDTC()
               if len(dtc) > 0:
                 print("Found DTCs:")
               else:
@@ -139,7 +138,7 @@ obd = obd2.OBD2Interface(sock)
 recvthread = threading.Thread(target=recv,args=(sock,obd))
 recvthread.start()
 
-vin = obd.getVIN()
+vin = obd.readVIN()
 
 recvthread.stop()
 

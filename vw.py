@@ -136,7 +136,25 @@ class VWModule:
     self.name = modules[mod]
     self.kwp = kwp
 
-  def getDTC(self):
+  def readID(self):
+    ret = {}
+    blk = self.readBlock(81)
+    print("INFO: ID structure parsing not implemented yet; raw message:",blk)
+    return NotImplemented
+
+  def getManufactureInfo(self):
+    ret = {}
+    blk = self.readBlock(80)
+    print("INFO: manufacture info structure parsing not implemented yet; raw message:",blk)
+    return NotImplemented
+
+  def readFWVersion(self):
+    ret = {}
+    blk = self.readBlock(82)
+    print("INFO: FW version structure parsing not implemented yet; raw message:",blk)
+    return NotImplemented
+
+  def readDTC(self):
     print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDeviceTroubleCodes")) #FIXME: actually parse these out.
     return []
 

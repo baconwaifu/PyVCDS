@@ -300,3 +300,9 @@ class VWTPStack:
         print("Disconnected from ECU channel:",k)
         del self.connections[k]
         break
+
+  def __enter__(self):
+    pass
+  def __exit__(self):
+    if sync and self.recvthread:
+      self.recvthread.stop()
