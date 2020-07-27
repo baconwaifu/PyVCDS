@@ -2,6 +2,10 @@
 
 import can
 import queue
+import threading
+import struct
+
+DEBUG = True
 
 pids = {
 0x1: "Monitor Status",
@@ -38,6 +42,12 @@ pids = {
 0x20: "Extended PIDs"
 }
 
+recv = True
+def recvthread(socket, stack):
+  global recv
+  while recv:
+    stack._recv(socket.recv())
+
 class OBD2Message:
   def __init__(self, l):
     self._len = l
@@ -45,9 +55,10 @@ class OBD2Message:
 
   def __iadd__(self, buf):
     self.buf += buf
+    return self
 
-  def __bytes__(self, buf):
-    return bytes(buf)
+  def __bytes__(self):
+    return bytes(self.buf)
 
   def done(self):
     return self._len == len(self.buf)
@@ -61,36 +72,40 @@ class OBD2ECU:
 
 class OBD2Interface:
   def __init__(self, socket):
+    recv = True
+    self.recvthread = threading.Thread(target=recvthread, args=(socket,self))
     self.ecus = {}
     self.buffers = {
-      0x7D8: queue.Queue(),
-      0x7D9: queue.Queue(),
-      0x7DA: queue.Queue(),
-      0x7DB: queue.Queue(),
-      0x7DC: queue.Queue(),
-      0x7DD: queue.Queue(),
-      0x7DE: queue.Queue()
+      0x7E8: queue.Queue(),
+      0x7E9: queue.Queue(),
+      0x7EA: queue.Queue(),
+      0x7EB: queue.Queue(),
+      0x7EC: queue.Queue(),
+      0x7ED: queue.Queue(),
+      0x7EE: queue.Queue()
     }
     self.framebufs = { #used for multi-frame message reception
-      0x7D8: None,
-      0x7D9: None,
-      0x7DA: None,
-      0x7DB: None,
-      0x7DC: None,
-      0x7DD: None,
-      0x7DE: None
+      0x7E8: None,
+      0x7E9: None,
+      0x7EA: None,
+      0x7EB: None,
+      0x7EC: None,
+      0x7ED: None,
+      0x7EE: None
     }
     self.socket = socket
+    recv = True
+    self.recvthread.start()
     resp = self.readPID(0) #Supported PIDs
-    for k,v in resp:
+    for k,v in resp.items():
       pids = {}
-      pack = struct.unpack(">I", resp[3:8])[0]
+      pack = struct.unpack(">I", v[3:8])[0]
       for i in range(0x20, 0, -1): #oddly, the highest PID is the lowest bit.
         if (pack & 1) == 1:
           pids[i] = True
         pack = pack >> 1
       if 0x20 in pids:
-        ext = self.readPID(0x20, k)
+        ext = self.readPID(0x20, k) #*assuming* that this is the "read extented PID" messages?
         pack = struct.unpack(">I", ext[3:8])[0]
         for i in range(0x40, 0x20, -1): #oddly, the highest PID is the lowest bit.
           if (pack & 1) == 1:
@@ -100,9 +115,17 @@ class OBD2Interface:
       self.ecus[k] = ecu
 
   def _recv(self, msg):
+    global DEBUG
+    if DEBUG:
+      print("Recieved Frame:",msg)
     rx = msg.arbitration_id
     if rx in self.framebufs:
-      if self.framebufs[rx]:
+      if DEBUG:
+        print("Frame is one we want")
+        print(self.framebufs[rx])
+      if not (self.framebufs[rx] is None):
+        if DEBUG:
+          print("Frame is multi-part component")
         assert 0xF0 & msg.data[0] == 0x20 #drop the sequence numbers...
         self.framebufs[rx] += msg.data[1:]
         if self.framebufs[rx].done():
@@ -111,38 +134,54 @@ class OBD2Interface:
       else:
         buf = msg.data
         if buf[0] == 0x10: #long multi-frame message, >7 bytes.
+          if DEBUG:
+            print("Frame is multi-part start")
           l = buf[1]
           req = buf[2] - 0x40
           pid = buf[3]
           dat = OBD2Message(l)
+          if DEBUG:
+            print(dat)
           dat += buf[2:]
-          self.framebufs[msg.arbitration_id] = dat #prep to recieve more frames.
-          flow = can.Message(arbitration_id=(msg.arbitration_id - 8),data=[0x3],extended_id=False)
+          self.framebufs[rx] = dat #prep to recieve more frames.
+          if DEBUG:
+            print(dat)
+          flow = can.Message(arbitration_id=(rx - 8),data=[0x30,0,0,0x55,0x55,0x55,0x55,0x55],extended_id=False)
+          print("sending flow control frame...")
           self.socket.send(flow) #kick out the flow control frame to tell the ECU that.
         else: #short frame, <8 bytes.
+          if DEBUG:
+            print("Frame is short frame")
           l = buf[0]
           req = buf[1]
           pid = buf[2]
           self.buffers[msg.arbitration_id].put(buf[1:l+2])
 
   def readVIN(self):
-    send(0x7DF, [0x9, 0x2])
-    for k,b in buffers.items():
+    self.send(0x7DF, [0x9, 0x2])
+    for k,b in self.buffers.items():
       buf = bytearray()
-      resp = self._get(b)
+      resp = self._get(b,timeout=.5)
       assert resp[0] == 0x49, "wrong response?"
       assert resp[1] == 0x2, "not the VIN."
-      return resp[2:].decode("ASCII")
+      return resp[3:].decode("ASCII") #trust that the first one is correct...
 
   def readPID(self, pid, ecu=0x7DF):
+    global DEBUG
     dat = [ 0x01, pid]
     self.send(ecu,dat)
     ret = {}
     for k,b in self.buffers.items():
+      if DEBUG:
+        print("Checking ECU {}...".format(k))
       resp = self._get(b)
+      if DEBUG:
+        print("Checked")
       if resp:
         ret[k] = resp
-    return ret if not len(ret) == 0 else None
+    if len(ret) == 0:
+      return None
+    return ret
 
   def send(self, tx, data):
     assert len(data) < 8, "Trying to send more than 8 bytes in a request (does OBD2 allow that?)"
@@ -155,6 +194,11 @@ class OBD2Interface:
 
   def _get(self, q, timeout=.1):
     try:
-      return q.get(timeout=.1)
+      return q.get(timeout=timeout)
     except queue.Empty:
       return None
+
+  def __enter__(self):
+    return self
+  def __exit__(self, a, b, c):
+    recv = False

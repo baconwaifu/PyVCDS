@@ -8,8 +8,8 @@ labels = None
 
 def saveLabelsToJSON(fname):
   global labels
-  import json, io:
-  fd = open(fname, "w"):
+  import json, io
+  fd = open(fname, "w")
   fd.write(json.dumps(labels, indent=4))
   fd.close()
 
@@ -155,7 +155,7 @@ class VWModule:
     return NotImplemented
 
   def readDTC(self):
-    print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDeviceTroubleCodes")) #FIXME: actually parse these out.
+    print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDiagnosticTroubleCodes")) #FIXME: actually parse these out.
     return []
 
   def readBlock(self, blk):
@@ -181,27 +181,36 @@ class VWModule:
 
 
   def __enter__(self): #nothing to do outside of __init__, but we need it here anyways.
-    pass
-  def __exit__(self):
-    self.kwp.__exit__()
+    return self
+  def __exit__(self,a,b,c):
+    self.kwp.__exit__(a,b,c)
 
 class VWVehicle:
   def __init__(self, stack):
     self.stack = stack;
     self.enabled = []
+    self.scanned = False
 
   def enum(self): #a crude enumeration primitive of all *known* ECUs
     global modules
+    if self.scanned:
+      return
+    self.scanned = True
     for mod in modules.keys():
       try:
-        stack.connect(mod).close()
+        self.stack.connect(mod).close()
         print("Found module:",modules[mod])
         self.enabled.append(mod)
       except (queue.Empty,ValueError):
         pass #squash the exception; just means "module not detected"
 
   def module(self, mod):
-    return VWModule(kwp.KWPSession(vwtp.connect(mod)), mod)
+    return VWModule(kwp.KWPSession(self.stack.connect(mod)), mod)
+
+  def __enter__(self):
+    return self
+  def __exit__(self,a,b,c):
+    pass #we don't do any direct cleanup
 
 if __name__ == "__main__":
   import json,jsonpickle

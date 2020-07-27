@@ -20,12 +20,13 @@ if DEBUG:
   time.sleep = sleep #crude debug hook.
 
 
-
+_threadrun = True
 #VWTP was architectured for an asynchronous socket, but python sockets are synchronous,
 #so we need a thread to do that for us.
 def recvthread(stack):
+  global _threadrun
   sock = stack.socket
-  while True:
+  while _threadrun:
     stack._recv(sock.recv())
 
 #note: the VWTP stack itself handles the sockets.
@@ -209,14 +210,17 @@ class VWTPConnection:
       return True
 
   def __enter__(self): #we only use the context manager for auto-cleanup.
-    pass
+    return self
 
 class VWTPStack:
   def __init__(self,socket,sync=True):
+    global _threadrun
+    _threadrun = True
     self.socket = socket
     #a sparse list of connections based on recv address.
     self.connections = {}
     self.framebuf = {} #a sparse frame buffer based on recieved address. *must* register a dest before messages will be buffered!
+    self.sync = sync
 
     if sync:
       #socket is synchronous, start the listener thread.
@@ -302,7 +306,8 @@ class VWTPStack:
         break
 
   def __enter__(self):
-    pass
-  def __exit__(self):
-    if sync and self.recvthread:
-      self.recvthread.stop()
+    return self
+  def __exit__(self,a,b,c):
+    global _threadrun
+    if self.sync and self.recvthread:
+      _threadrun = False

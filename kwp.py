@@ -126,7 +126,8 @@ class KWPSession:
   def __init__(self, transport):
     self.transport = transport
     self.timethread = threading.Thread(target=timeout, args=(self,2))
-
+    self.mfrsrv = []
+    self.mfrresp = []
   def mfr(self,service,resp):
     self.mfrsrv = service
     self.mfrresp = resp
@@ -183,10 +184,11 @@ class KWPSession:
         raise EAGAIN
       elif resp[1] == 0x78: #"Response Pending"
         raise EWAIT
+      msg = "Unknown response"
       if resp[1] in responses:
         msg = reponses[resp[1]] #give us the error's name.
-      else:
-        msg = self.mfresp[resp[1]] #manufacturer-specific error
+      elif resp[1] in self.mfrresp:
+        msg = self.mfrresp[resp[1]] #manufacturer-specific error
       raise NotImplementedError(msg) #this is mostly just a matter of *which* error to throw.
 
     elif resp[0] == val:
@@ -196,6 +198,6 @@ class KWPSession:
   def close(self):
     pass
   def __enter__(self):
-    pass
-  def __exit__(self):
+    return self
+  def __exit__(self,a,b,c):
     self.close()

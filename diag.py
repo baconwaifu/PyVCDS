@@ -9,7 +9,7 @@ import threading
 
 def recv(socket, stack):
   while True:
-    stack._recv(socket.recv)
+    stack._recv(socket.recv())
 
 def selector(lst):
   while True:
@@ -40,11 +40,11 @@ def advanced():
   pass
 
 def oem(vin):
-  global socket
+  global sock
   while True:
-    if vin.startswith("WVW"): #Volkswagen
+    if vin.startswith("WVW"): 
       import vwtp, kwp, vw
-      with vwtp.VWTPStack(socket) as stack, vw.VWVehicle(stack) as car:
+      with vwtp.VWTPStack(sock) as stack, vw.VWVehicle(stack) as car:
         opt = ["Enumerate Modules", "Read DTCs by module", "Read Measuring Data Block by module", "Long-Coding", "Load Labels from VCDS", "Load Labels from JSON", "Back"]
         op = selector(opt)
         if op == 0:
@@ -54,19 +54,24 @@ def oem(vin):
           for mod in car.enabled:
             print(" ",vw.modules[mod])
         elif op == 1:
+          if not car.scanned:
+            car.enum() #TODO: persistent `car` instance
           for mod in car.enabled:
             print("Checking module '{}'".format(vw.modules[mod]))
-            with car.module(mod) as m:
-              dtc = m.readDTC()
-              if len(dtc) > 0:
-                print("Found DTCs:")
-              else:
-                print("No Faults detected")
-              for d in dtc:
-                if d in vw.labels[module]["dtc"]:
-                  print(vw.labels[module]["dtc"][d])
+            try:
+              with car.module(mod) as m:
+                dtc = m.readDTC()
+                if len(dtc) > 0:
+                  print("Found DTCs:")
                 else:
-                  print("Unknown DTC '{}'".format(d))
+                  print("No Faults detected")
+                for d in dtc:
+                  if d in vw.labels[module]["dtc"]:
+                    print(vw.labels[module]["dtc"][d])
+                  else:
+                    print("Unknown DTC '{}'".format(d))
+            except NotImplementedError:
+              print("Unknown fault getting DTCs from module, skipping")
         elif op == 2: #read measuring block
           mods = {}
           for i in car.enabled:
@@ -133,14 +138,16 @@ if args.bits:
   raise NotImplementedError("Dynamic bitrate selection is not yet supported")
 
 sock = can.interface.Bus(channel=bus, bustype='socketcan')
-obd = obd2.OBD2Interface(sock)
+#with obd2.OBD2Interface(sock) as obd:
 
-recvthread = threading.Thread(target=recv,args=(sock,obd))
-recvthread.start()
+#recvthread = threading.Thread(target=recv,args=(sock,obd))
+#recvthread.start()
 
-vin = obd.readVIN()
+#  vin = obd.readVIN()
 
-recvthread.stop()
+#recvthread.stop()
+
+vin = "WVW" #FIXME: remove once threads are working properly
 
 if args.vin:
   print(vin)  
