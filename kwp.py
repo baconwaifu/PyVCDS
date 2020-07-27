@@ -195,3 +195,7 @@ class KWPSession:
 
   def close(self):
     pass
+  def __enter__(self):
+    pass
+  def __exit__(self):
+    self.close()

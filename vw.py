@@ -2,6 +2,21 @@ import kwp
 import can
 import vwtp
 import queue
+import vcds_label #VCDS label file parsing is split off.
+
+labels = None
+
+def saveLabelsToJSON(fname):
+  global labels
+  import json, io:
+  fd = open(fname, "w"):
+  fd.write(json.dumps(labels, indent=4))
+  fd.close()
+
+def loadLabelsFromJSON(js): #we store our labels in JSON. larger, but easier to load than VCDS.
+  global labels
+  import json
+  labels = json.loads(js)
 
 class blockMeasure:
   def __init__(self, name, func):
@@ -49,7 +64,7 @@ scalers = {
 }
 
 
-def parseBlock(block):
+def parseBlock(block): #takes a raw KWP response.
   blk = []
   buf = block[2:]
   for i in range(0, len(buf), 3):
@@ -115,6 +130,43 @@ modules = {
 0x77: "CarPhone" #yes, some cars do have a built in cellular phone, and yes, they were made post-smartphone.
 }
 
+class VWModule:
+  def __init__(self, kwp, mod):
+    self.idx = mod
+    self.name = modules[mod]
+    self.kwp = kwp
+
+  def getDTC(self):
+    print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDeviceTroubleCodes")) #FIXME: actually parse these out.
+    return []
+
+  def readBlock(self, blk):
+    return parseBlock(self.kwp.request("getDataByLocalIdentifier", blk))
+  
+  def readLongCode(self,code):
+    raise NotImplementedError("Need VCDS Trace to figure out KWP commands")
+
+  def setLongCode(self,code, buf):
+    raise NotImplementedError("Need VCDS Trace to figure out KWP commands")
+    print("WARNING: this function presents a *VERY REAL CHANCE* of PERMANENTLY BRICKING the selected module. Continue?")
+    resp = input("(y/N)> ")
+    if resp == "y" or resp == "Y":
+      print("Are you *REALLY* sure? there's no going back after this point.")
+      resp = input("(y/N)> ")
+      if resp == "y" or resp == "Y":
+        print("Uploading... Do not turn the vehicle off or remove the adapter")
+        kwp.request("InvalidRequestQWERTYU", code, buf) #FIXME: the right request?
+        print("Done.")
+    else:
+      print("Aborted.")
+      return
+
+
+  def __enter__(self): #nothing to do outside of __init__, but we need it here anyways.
+    pass
+  def __exit__(self):
+    self.kwp.__exit__()
+
 class VWVehicle:
   def __init__(self, stack):
     self.stack = stack;
@@ -129,6 +181,9 @@ class VWVehicle:
         self.enabled.append(mod)
       except (queue.Empty,ValueError):
         pass #squash the exception; just means "module not detected"
+
+  def module(self, mod):
+    return VWModule(kwp.KWPSession(vwtp.connect(mod)), mod)
 
 if __name__ == "__main__":
   import json,jsonpickle
@@ -145,7 +200,7 @@ if __name__ == "__main__":
   conn = stack.connect(0x01)
   kw = kwp.KWPSession(conn)
   with conn:
-    assert kw.request("startDiagnosticSession", 0x89) == b'\x50\x89' #positive response, same value.
+    kw.begin(0x89)
     blks = {}
     try:
      for i in range(1,256):

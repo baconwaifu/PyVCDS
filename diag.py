@@ -42,11 +42,11 @@ def advanced():
 def oem(vin):
   global socket
   while True:
-    if vin.startswith("WVW"):
+    if vin.startswith("WVW"): #Volkswagen
       import vwtp, kwp, vw
       stack = vwtp.VWTPStack(socket)
       with vw.VWVehicle(stack) as car:
-        opt = ["Enumerate Modules", "Read DTCs by module", "Read Measuring Data Block by module", "Long-Coding", "Back"]
+        opt = ["Enumerate Modules", "Read DTCs by module", "Read Measuring Data Block by module", "Long-Coding", "Load Labels from VCDS", "Load Labels from JSON", "Back"]
         op = selector(opt)
         if op == 0:
           print("Enumerating modules, please wait")
@@ -75,12 +75,25 @@ def oem(vin):
           op2 = dselector(mods)
           with car.module(mod) as mod:
             blk = dselector(vw.labels[module]["blocks"])
-            mod.readBlock(blk)
+            blk = mod.readBlock(blk)
+            for b in blk:
+              print(b)
         elif op == 3: #long-code
           raise NotImplementedError("Need a CAN trace of someone with VCDS reading or writing a long-code")
         elif op == 4:
+          raise NotImplementedError("VCDS Label parsing has not yet been implemented")
+        elif op == 5:
+          print("Path to the JSON file?")
+          path = input("> ")
+          fd = open(path, "r")
+          js = fd.read()
+          fd.close()
+          vw.loadLabelsFromJSON(js)
+        elif op == 6:
           return
-        
+    else:
+      print("Un-implemented OEM for VIN '{}'".format(vin))
+      return    
 
 def menu():
   global obd
