@@ -2,6 +2,9 @@ import struct
 import io
 import threading
 import queue
+import time
+
+DEBUG=True
 
 #methods are stateless; used for metadata storage only.
 class KWPRequest:
@@ -35,7 +38,7 @@ requests = {
 "clearDiagnosticInformation": KWPRequest(0x14),
 "readStatusOfDiagnosticTroubleCodes": KWPRequest(0x17),
 "readDiagnosticTroubleCodesByStatus": KWPRequest(0x18),
-"readEcuIdentification": KWPRequest(0x1A),
+"readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs.
 "stopDiagnosticSession": KWPRequest(0x20),
 "readDataByLocalIdentifier": KWPRequest(0x21, "B"),
 "readDataByCommonIdentifier": KWPRequest(0x22, "B"),
@@ -46,8 +49,8 @@ requests = {
 "writeDataByCommonIdentifier": KWPRequest(0x2E),
 "inputOutputControlByCommonIdentifier": KWPRequest(0x2F),
 "inputOutputControlByLocalIdentifier": KWPRequest(0x30),
-"startRoutineByLocalIdentifier": KWPRequest(0x31),
-"stopRoutineByLocalIdentifier": KWPRequest(0x32),
+"startRoutineByLocalIdentifier": KWPRequest(0x31, "B"),
+"stopRoutineByLocalIdentifier": KWPRequest(0x32, "B"),
 "requestRoutineResultsByLocalIdentifier": KWPRequest(0x33),
 "requestDownload": KWPRequest(0x34),
 "requestUpload": KWPRequest(0x35),
@@ -128,15 +131,22 @@ class KWPSession:
     self.mfrsrv = service
     self.mfrresp = resp
 
-  def begin(self, proto=None):
-    resp = self.request("startDiagnosticSession", proto)
+  def begin(self, *params):
+    resp = self.request("startDiagnosticSession", *proto)
     assert resp[0] == 0x50 #this is checked elsewhere, but make sure.
     self.timethread.start()
 
   def request(self, req, *params):
-    global framelock
+    global framelock, DEBUG
+    if DEBUG:
+      if len(params) == 0:
+        print("Performing request:",req)
+      else:
+        print("Performing request '{}' with params: {}".format(req,params))
     if not req in requests: #if we don't have a generic, try the OEM.
       req = self.mfrsrv[req]
+      if DEBUG:
+        print("Is OEM Request")
     else:
       req = requests[req]
     while True: #this is for request repetition due to "EAGAIN" response.
@@ -152,17 +162,23 @@ class KWPSession:
               resp = self.recv(1)
               self.check(resp, req.num + 0x40)
               return resp
-            except EWAIT: 
-              pass #recv is blocking, so just immediately keep waiting.
+            except EWAIT:
+              if DEBUG:
+                print("EWAIT")
+              #recv is blocking, so just immediately keep waiting.
             except queue.Empty:
               raise ETIME("KWP Timeout")
       except EAGAIN: #repeat the request after a short delay (50ms)
-        sleep(0.05)
+        if DEBUG:
+          print("EAGAIN")
+        time.sleep(self.transport.packival)
   def recv(self,timeout=None):
     return self.transport.read(timeout) #the queue-based implementation is a blocking call if the queue is empty.
 
   def check(self, resp, val):
     if resp[0] == 0x7F:
+      if DEBUG:
+        print("Got Negative response:",resp)
       if resp[1] == 0x21 or resp[1] == 0x23: #repeat the request; either busy or "not done yet"
         raise EAGAIN
       elif resp[1] == 0x78: #"Response Pending"

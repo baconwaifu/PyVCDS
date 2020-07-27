@@ -7,13 +7,13 @@ import threading
 
 #FIXME: 
 
-DEBUG=True
+DEBUG=False
 
 
 _sleep = time.sleep
 
 def sleep(sl):
-  print("Sleeping for {} seconds...".format(sl))
+#  print("Sleeping for {} seconds...".format(sl))
   _sleep(sl)
 
 if DEBUG:
@@ -40,10 +40,12 @@ class VWTPConnection:
     self.callback = callback
     self.stack = stack
     self.tx = chan_id
+    self._tx = chan_id
     self.blksize = None #the number of packets that can be recieved at once before an ACK
     self.seq = 0 #the sequence we're expecting to see
     self.tseq = 0 #the sequence the ECU is expecting to see
     self._open = False
+    self.q = queue.Queue() #used for "await" by the channel setup.
 
   def open(self):
     self._open = True
@@ -54,15 +56,20 @@ class VWTPConnection:
     buf[1] = 15 #block size.
     buf[2] = 0x8a #these four bytes are timing parameters; this one being ack timeout. upper 2 bits are scale, lower 6 are int. (this is 100ms)
     buf[3] = 0xff
-    buf[4] = 0x32 #interval between packets 5ms? seems high. (50x 0.1ms scale)
+    buf[4] = 0x0A #interval between packets 5ms? seems high. (50x 0.1ms scale)
     buf[5] = 0xff
     self._send(buf)
     print("Setup message sent, awaiting response.")
-    while True:
-      if self.blksize:
+    for i in range(3):
+      try:
+        self.q.get(timeout=.1)
         break
-      else:
-        time.sleep(0.01)
+      except queue.Empty:
+        print("Retransmit setup...")
+        self._send(buf)
+    if not self.blksize:
+      raise ValueError("Channel setup timeout")
+    self.tx=self._tx
 
   def _recv(self, msg):
     global DEBUG
@@ -72,6 +79,8 @@ class VWTPConnection:
     buf = buf[1:]
     if op == 0xA8: #disconnect
       self.close()
+    elif op == 0xA3: #"ping"
+      pass
     elif op  == 0xA1: #params response
       if self.blksize:
         print ("WARN: Potential connection fault: recieved 'parameter response' when already configured!\nDropping it and hoping nothing breaks...")
@@ -81,10 +90,11 @@ class VWTPConnection:
       scale = [ .1, 1, 10, 100]
       acktime = buf[1] >> 6 #scale is 100ms, 10ms, 1ms, .1ms
       self.acktime = (scale[acktime] * (buf[1] & 0x3F)) * 0.001 #go from ms to s.
-      packival = (scale[buf[3] >> 6] * (buf[3] & 0x3F)) * 0.001
+      self.packival = (scale[buf[3] >> 6] * (buf[3] & 0x3F)) * 0.001
       if DEBUG:
         print("Parameter response received. channel parameters:",
-          "\nTimeout in ms:",self.acktime * 1000,"\nMinimum Interval between frames in ms:",packival * 1000,"\nBlock Size:",self.blksize)
+          "\nTimeout in ms:",self.acktime * 1000,"\nMinimum Interval between frames in ms:",self.packival * 1000,"\nBlock Size:",self.blksize)
+      self.q.put(None) #just stuff *something* in there to break the retry loop
     elif op & 0xf0 == 0xB0 or op & 0xf0 == 0x90:
       self.acks[op & 0xf] = True #mark the ack in the sequence table
     else: #assume it's a data packet.
@@ -107,7 +117,9 @@ class VWTPConnection:
         self.framebuf = None
 
   def recv(self, frame):
-    print("Assembled VWTP message:",frame)
+    global DEBUG
+    if DEBUG:
+      print("Assembled VWTP message:",frame)
     if self.callback: #if we have a callback, call it
       self.callback(frame)
     else: #else buffer the frames until the reader swings around
@@ -124,7 +136,10 @@ class VWTPConnection:
   def _send(self, blob):
     if not self._open and not blob[0] == 0xA8: #ignore this for "disconnect" messages
       raise ValueError("Attempted to write to closed connection")
-    frame = can.Message(arbitration_id=self.tx, data=blob)
+    if self.tx:
+      frame = can.Message(arbitration_id=self.tx, data=blob, extended_id=False)
+    else:
+      frame = can.Message(arbitration_id=0x200, data=blob, extended_id=False)
     self.stack.send(frame)
 
   def _sendblk(self, blk):
@@ -168,7 +183,7 @@ class VWTPConnection:
     for i in range(0, (len(buf) + self.blksize - 1) // self.blksize, self.blksize): #round up
       blocks.append(buf[i:i+self.blksize])
     for blk in blocks:
-      retry = 4
+      retry = 10
       sent = False
       while not sent: #repeat blocks that time out
         sent = self._sendblk(blk)
@@ -215,27 +230,35 @@ class VWTPStack:
     raise NotImplementedError("VWTP over CAN bus contains no usable enumeration primitives.")
 
   def _register(self, dest):
+    global DEBUG
     if dest in self.framebuf:
       return
     else:
-      print("Registering simple-frame handler for dest:",dest)
+      if DEBUG:
+        print("Registering simple-frame handler for dest:",dest)
       self.framebuf[dest] = queue.Queue()
 
   def _unregister(self, dest): #note: only one user of an address can exist at a time!
+    global DEBUG
     if dest in self.framebuf:
       del self.framebuf[dest]
-      print("Unregistering simple-frame handler for dest:",dest)
+      if DEBUG:
+        print("Unregistering simple-frame handler for dest:",dest)
 
   def _recv(self,msg):
+    global DEBUG
     if msg.arbitration_id in self.connections:
-      print("Got VWTP subframe:",msg)
+      if DEBUG:
+        print("Got VWTP subframe:",msg)
       self.connections[msg.arbitration_id]._recv(msg.data) #note: _recv is for CAN frame data, recv is called when a *VWTP* frame is constructed.
     elif msg.arbitration_id in self.framebuf:
-      print("Got link control frame:",msg)
+      if DEBUG:
+        print("Got link control frame:",msg)
       self.framebuf[msg.arbitration_id].put(msg.data)
 
   def send(self,msg):
-    print("Sending frame:",msg)
+    if DEBUG:
+      print("Sending frame:",msg)
     self.socket.send(msg)
 
   def connect(self,dest,callback=None,proto=1): #note: the *logical* destination, also known as the unit identifier

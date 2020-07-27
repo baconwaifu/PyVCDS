@@ -81,6 +81,7 @@ modules = {
 0x17: "Instrument Cluster",
 0x18: "Aux Heater", #block heater for diesels?
 0x19: "CAN Gateway", #what you're probably talking to with this!
+0x1F: "Identity Controller (?)", #no clue what this is, but the simulator emulates it.
 0x20: "High Beam Assist",
 0x22: "AWD",
 0x25: "Immobilizer", #for the car. not you.
@@ -126,16 +127,17 @@ class VWVehicle:
         stack.connect(mod).close()
         print("Found module:",modules[mod])
         self.enabled.append(mod)
-      except queue.Empty:
+      except (queue.Empty,ValueError):
         pass #squash the exception; just means "module not detected"
 
 if __name__ == "__main__":
-  sock = can.interface.Bus(channel='vcan0', bustype='socketcan')
+  import json,jsonpickle
+  sock = can.interface.Bus(channel='can0', bustype='socketcan')
   stack = vwtp.VWTPStack(sock)
 
   car = VWVehicle(stack)
   print("Connecting to vehicle and enumerating modules, please wait a moment.")
-  car.enum()
+#  car.enum()
   print("Modules present:")
   for k in car.enabled:
     print(" ",modules[k])
@@ -144,6 +146,15 @@ if __name__ == "__main__":
   kw = kwp.KWPSession(conn)
   with conn:
     assert kw.request("startDiagnosticSession", 0x89) == b'\x50\x89' #positive response, same value.
-    print(parseBlock(kw.request("readDataByLocalIdentifier", 2)))
+    blks = {}
+    try:
+     for i in range(1,256):
+      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
+      blks[i] = blk
+    except ValueError:
+     pass
+    fd = open("blks.json", "w")
+    fd.write(json.dumps(json.loads(jsonpickle.dumps(blks)), indent=4))
+    fd.close()
   kw.close()
   import sys; sys.exit(0) #need to do this because of threads.
