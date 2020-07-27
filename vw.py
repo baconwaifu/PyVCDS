@@ -80,13 +80,16 @@ def labelBlock(ecu, blknum, blk):
 
 modules = {
 0x1: "Engine",
-0x2: "Transmission",
+0x2: "Automatic Transmission",
 0x3: "ABS",
+0x4: "Steering",
 0x5: "Security Access",
 0x6: "Passenger Seat",
 0x7: "Front Infotainment",
 0x8: "Climate Control",
 0x9: "Central Electronics",
+0xE: "Media Player 1",
+0xF: "Satillite Radio",
 0x10: "Parking Aid #2",
 0x11: "Engine #2",
 0x13: "Distance Regulation",
@@ -96,6 +99,7 @@ modules = {
 0x17: "Instrument Cluster",
 0x18: "Aux Heater", #block heater for diesels?
 0x19: "CAN Gateway", #what you're probably talking to with this!
+0x1B: "Active Steering",
 0x1F: "Identity Controller (?)", #no clue what this is, but the simulator emulates it.
 0x20: "High Beam Assist",
 0x22: "AWD",
@@ -155,6 +159,7 @@ class VWModule:
     return NotImplemented
 
   def readDTC(self):
+    #FIXME: VW's DTC groups
     print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDiagnosticTroubleCodes")) #FIXME: actually parse these out.
     return []
 
@@ -214,7 +219,7 @@ class VWVehicle:
 
 if __name__ == "__main__":
   import json,jsonpickle
-  sock = can.interface.Bus(channel='can0', bustype='socketcan')
+  sock = can.interface.Bus(channel='vcan0', bustype='socketcan')
   stack = vwtp.VWTPStack(sock)
 
   car = VWVehicle(stack)
@@ -229,12 +234,12 @@ if __name__ == "__main__":
   with conn:
     kw.begin(0x89)
     blks = {}
-    try:
-     for i in range(1,256):
+    for i in range(1,256):
+     try:
       blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
       blks[i] = blk
-    except ValueError:
-     pass
+     except (ValueError, kwp.ETIME):
+      pass
     fd = open("blks.json", "w")
     fd.write(json.dumps(json.loads(jsonpickle.dumps(blks)), indent=4))
     fd.close()

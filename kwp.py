@@ -38,6 +38,7 @@ requests = {
 "clearDiagnosticInformation": KWPRequest(0x14),
 "readStatusOfDiagnosticTroubleCodes": KWPRequest(0x17),
 "readDiagnosticTroubleCodesByStatus": KWPRequest(0x18),
+"UDSreadDiagnosticTroubleCodes": KWPRequest(0x19), #UDS "read DTCs"
 "readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs.
 "stopDiagnosticSession": KWPRequest(0x20),
 "readDataByLocalIdentifier": KWPRequest(0x21, "B"),
@@ -45,6 +46,7 @@ requests = {
 "readMemoryByAddress": KWPRequest(0x23),
 "setDataRates": KWPRequest(0x26),
 "securityAccess": KWPRequest(0x27),
+"UDSauthentication": KWPRequest(0x29), #Is actually UDS; used for more advanced authentication such as PKI
 "DynamicallyDefineLocalIdentifier": KWPRequest(0x2C),
 "writeDataByCommonIdentifier": KWPRequest(0x2E),
 "inputOutputControlByCommonIdentifier": KWPRequest(0x2F),
@@ -100,15 +102,6 @@ params = {
 
 }
 
-def timeout(sess, timeout):
-  sl = timeout/2 #play it safe, ping in half the timeout
-  while True:
-    sleep(sl)
-    sess.request("testerPresent")
-
-#to allow a heartbeat thread, we need to be sure
-#KWP frames are sent thread-atomically, so use this lock.
-framelock = threading.Lock() 
 
 #repeat the question.
 class EAGAIN(Exception):
@@ -122,6 +115,23 @@ class EWAIT(Exception):
 class ETIME(Exception):
   pass
 
+def timeout(sess, timeout):
+  sl = timeout/2 #play it safe, ping in half the timeout
+  while True:
+    time.sleep(sl)
+    if sess.transport._open: #implemenation detail; TODO: change that.
+      try:
+        sess.request("testerPresent")
+      except (ValueError, ETIME):
+        return #catch the "tried to send to closed connection" message and kill the thread cleanly.
+    else:
+      return
+
+#to allow a heartbeat thread, we need to be sure
+#KWP frames are sent thread-atomically, so use this lock.
+framelock = threading.Lock() 
+
+
 class KWPSession:
   def __init__(self, transport):
     self.transport = transport
@@ -133,7 +143,7 @@ class KWPSession:
     self.mfrresp = resp
 
   def begin(self, *params):
-    resp = self.request("startDiagnosticSession", *proto)
+    resp = self.request("startDiagnosticSession", *params)
     assert resp[0] == 0x50 #this is checked elsewhere, but make sure.
     self.timethread.start()
 
