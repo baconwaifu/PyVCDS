@@ -4,7 +4,7 @@ import threading
 import queue
 import time
 
-DEBUG=True
+DEBUG=False
 
 #methods are stateless; used for metadata storage only.
 class KWPRequest:
@@ -37,7 +37,7 @@ requests = {
 "readDiagnosticTroubleCodes": KWPRequest(0x13),
 "clearDiagnosticInformation": KWPRequest(0x14),
 "readStatusOfDiagnosticTroubleCodes": KWPRequest(0x17),
-"readDiagnosticTroubleCodesByStatus": KWPRequest(0x18),
+"readDiagnosticTroubleCodesByStatus": KWPRequest(0x18, "s"),
 "UDSreadDiagnosticTroubleCodes": KWPRequest(0x19), #UDS "read DTCs"
 "readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs.
 "stopDiagnosticSession": KWPRequest(0x20),

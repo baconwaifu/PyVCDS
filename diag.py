@@ -6,6 +6,7 @@ import argparse
 import can
 import obd2
 import threading
+import queue
 
 def recv(socket, stack):
   while True:
@@ -70,7 +71,7 @@ def oem(vin):
                     print(vw.labels[module]["dtc"][d])
                   else:
                     print("Unknown DTC '{}'".format(d))
-            except NotImplementedError:
+            except (NotImplementedError, ValueError, queue.Empty):
               print("Unknown fault getting DTCs from module, skipping")
         elif op == 2: #read measuring block
           mods = {}

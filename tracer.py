@@ -14,7 +14,7 @@ for k,v in kwp.requests.items():
 
 DEBUG = False
 
-bus = can.interface.Bus(channel="vcan0", bustype="socketcan")
+bus = can.interface.Bus(channel="can0", bustype="socketcan")
 
 inbound = {} #from car
 outbound = {} #to car
@@ -33,6 +33,8 @@ def kwp_decode(buf):
   else:
     if kwp.requests[reqmap[buf[0]]].fmt:
       print("Parameters:",kwp.requests[reqmap[buf[0]]].unpack(buf[1:]))
+    else:
+      print("Parameters unknown, raw message:",buf)
 
 class VWTPConnection:
   def __init__(self, ecu, rx):
@@ -143,7 +145,7 @@ class VWTPConnection:
   def _recv(self, buf):
     global reqmap
     if buf[0] == 0x7f:
-      print("Negative KWP response for service {}:".format(buf[1]),kwp.resp[buf[2]])
+      print("Negative KWP response for service {}:".format(buf[1]),kwp.responses[buf[2]])
     elif buf[0] & 0x40 == 0x40:
       if buf[0] - 0x40 in reqmap:
         print("Positive KWP response:", reqmap[buf[0] - 0x40])
@@ -185,6 +187,7 @@ def recv(frame):
     conn = VWTPConnection(frame.data[0], (frame.data[5] * 256) + frame.data[4])
     inbound[conn.rx] = conn
     print("Starting VWTP Connection to:",frame.data[0])
+    print("Module name:",vw.modules(frame.data[0]))
   elif rx in buffers:
     if rx & 0xf00 == 0x200:
       print("Creating VWTP Connection")

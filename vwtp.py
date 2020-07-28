@@ -49,8 +49,10 @@ class VWTPConnection:
     self.q = queue.Queue() #used for "await" by the channel setup.
 
   def open(self):
+    global DEBUG
     self._open = True
-    print("Beginning channel parameter setup")
+    if DEBUG:
+      print("Beginning channel parameter setup")
     #called when the channel is set up to recieve frames at the designated ID, to start channel setup.
     buf = [None] * 6
     buf[0] = 0xA0
@@ -60,13 +62,15 @@ class VWTPConnection:
     buf[4] = 0x0A #interval between packets 5ms? seems high. (50x 0.1ms scale)
     buf[5] = 0xff
     self._send(buf)
-    print("Setup message sent, awaiting response.")
+    if DEBUG:
+      print("Setup message sent, awaiting response.")
     for i in range(3):
       try:
         self.q.get(timeout=.1)
         break
       except queue.Empty:
-        print("Retransmit setup...")
+        if DEBUG:
+          print("Retransmit setup...")
         self._send(buf)
     if not self.blksize:
       raise ValueError("Channel setup timeout")
@@ -266,7 +270,8 @@ class VWTPStack:
     self.socket.send(msg)
 
   def connect(self,dest,callback=None,proto=1): #note: the *logical* destination, also known as the unit identifier
-    print("Connecting to ECU:",dest)
+    if DEBUG:
+      print("Connecting to ECU:",dest)
     #connect frame format:
     #0x0: component ID
     #0x1: opcode (0xC0: setup request, 0xD0: positive respose, 0xD6..D8: negative response)
@@ -293,7 +298,8 @@ class VWTPStack:
     tx = (blob[5] * 256) + blob[4]
     conn = VWTPConnection(self,tx,callback) #tx is usually 0x740.
     self.connections[0x300] = conn #FIXME: multiple connections at once
-    print("Connected")
+    if DEBUG:
+      print("Connected")
     conn.open()
     return conn
 
@@ -301,7 +307,8 @@ class VWTPStack:
     con._send([0xA8])
     for k,v in self.connections.items():
       if v is con:
-        print("Disconnected from ECU channel:",k)
+        if DEBUG:
+          print("Disconnected from ECU channel:",k)
         del self.connections[k]
         break
 

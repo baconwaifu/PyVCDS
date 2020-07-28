@@ -131,7 +131,7 @@ modules = {
 0x72: "Rear Right Door",
 0x75: "Telematics", #"hey, where'd my car go?"
 0x76: "Parking Aid", #Better than a tennis ball on a string!
-0x77: "CarPhone" #yes, some cars do have a built in cellular phone, and yes, they were made post-smartphone.
+0x77: "CarPhone", #yes, some cars do have a built in cellular phone, and yes, they were made post-smartphone.
 }
 
 class VWModule:
@@ -159,8 +159,8 @@ class VWModule:
     return NotImplemented
 
   def readDTC(self):
-    #FIXME: VW's DTC groups
-    print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDiagnosticTroubleCodes")) #FIXME: actually parse these out.
+    #VW's DTC groups are the first digit of a given DTC.
+    print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDiagnosticTroubleCodesByStatus", b'\x02\xff\x00')) #FIXME: actually parse these out.
     return []
 
   def readBlock(self, blk):
@@ -201,6 +201,7 @@ class VWVehicle:
     if self.scanned:
       return
     self.scanned = True
+    print("Enumerating Modules...")
     for mod in modules.keys():
       try:
         self.stack.connect(mod).close()
