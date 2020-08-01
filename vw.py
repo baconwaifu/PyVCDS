@@ -3,6 +3,7 @@ import can
 import vwtp
 import queue
 import vcds_label #VCDS label file parsing is split off.
+import util
 
 labels = None
 
@@ -143,25 +144,50 @@ class VWModule:
   def readID(self):
     ret = {}
     blk = self.readBlock(81)
-    print("INFO: ID structure parsing not implemented yet; raw message:",blk)
+    util.log(4,"ID structure parsing not implemented yet; raw message:",blk)
     return NotImplemented
 
   def getManufactureInfo(self):
     ret = {}
     blk = self.readBlock(80)
-    print("INFO: manufacture info structure parsing not implemented yet; raw message:",blk)
+    util.log(4,"Manufacture info structure parsing not implemented yet; raw message:",blk)
     return NotImplemented
 
   def readFWVersion(self):
     ret = {}
     blk = self.readBlock(82)
-    print("INFO: FW version structure parsing not implemented yet; raw message:",blk)
+    util.log(4,"FW version structure parsing not implemented yet; raw message:",blk)
     return NotImplemented
 
+  def getDTC(self): #note: this returns a *different format* to the one below.
+    dtcs = {}
+    for i in range(256):
+      try:
+        req = self.kwp.request("readDiagnosticTroubleCodes", bytes([i]))
+        count = req[1]
+        dtcs[i] = []
+        if count > 0:
+          for ii in range(0,count*2,2):
+            dtc = req[ii+2:ii+4]
+            dtcs[i].append(dtc)
+      except NotImplementedError:
+        pass #nom it, means invalid group
+    return dtcs
+
   def readDTC(self):
-    #VW's DTC groups are the first digit of a given DTC.
-    print("INFO: DTC parsing not implemented, raw KWP message:",self.kwp.request("readDiagnosticTroubleCodesByStatus", b'\x02\xff\x00')) #FIXME: actually parse these out.
-    return []
+    #TODO: VWs appear to use 1-byte group numbers, so it should only take a few minutes to enumerate all groups for a given module
+    #unfortunately, a stock car's module outfit is extremely limited without being able to re-code the gateway.
+    try: #this mimics the zurich's request pattern for DTCs by "tripped" status.
+      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02FF, group 00; seems to work on transmission
+    except NotImplementedError:
+      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00FF, group 00; works on engine, may work on others?
+    dtcs = []
+    count = req[1]
+    if count > 0:
+      for i in range(0,count*2,2):
+        dtc = req[i+2:i+4]
+        dtcs.append(dtc)
+    return dtcs
 
   def readBlock(self, blk):
     return parseBlock(self.kwp.request("getDataByLocalIdentifier", blk))
@@ -171,14 +197,15 @@ class VWModule:
 
   def setLongCode(self,code, buf):
     raise NotImplementedError("Need VCDS Trace to figure out KWP commands")
-    print("WARNING: this function presents a *VERY REAL CHANCE* of PERMANENTLY BRICKING the selected module. Continue?")
+    #note: this should *never* be moved to the log function; this is a user safety interface.
+    print("WARNING: This function presents a *VERY REAL CHANCE* of PERMANENTLY BRICKING the selected module. Continue?")
     resp = input("(y/N)> ")
     if resp == "y" or resp == "Y":
       print("Are you *REALLY* sure? there's no going back after this point.")
       resp = input("(y/N)> ")
       if resp == "y" or resp == "Y":
         print("Uploading... Do not turn the vehicle off or remove the adapter")
-        kwp.request("InvalidRequestQWERTYU", code, buf) #FIXME: the right request?
+        kwp.request("InvalidRequestQWERTYU", code, buf) #FIXME: what's the right request?
         print("Done.")
     else:
       print("Aborted.")
@@ -201,11 +228,11 @@ class VWVehicle:
     if self.scanned:
       return
     self.scanned = True
-    print("Enumerating Modules...")
+    util.log(5,"Enumerating Modules...")
     for mod in modules.keys():
       try:
         self.stack.connect(mod).close()
-        print("Found module:",modules[mod])
+        util.log(5,"Found module:",modules[mod])
         self.enabled.append(mod)
       except (queue.Empty,ValueError):
         pass #squash the exception; just means "module not detected"

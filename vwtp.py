@@ -3,6 +3,7 @@ import can
 import struct
 import time
 import threading
+import util
 #Volkswagen Transport Protocol
 
 #FIXME: 
@@ -51,8 +52,7 @@ class VWTPConnection:
   def open(self):
     global DEBUG
     self._open = True
-    if DEBUG:
-      print("Beginning channel parameter setup")
+    util.log(5,"Beginning channel parameter setup")
     #called when the channel is set up to recieve frames at the designated ID, to start channel setup.
     buf = [None] * 6
     buf[0] = 0xA0
@@ -62,15 +62,13 @@ class VWTPConnection:
     buf[4] = 0x0A #interval between packets 5ms? seems high. (50x 0.1ms scale)
     buf[5] = 0xff
     self._send(buf)
-    if DEBUG:
-      print("Setup message sent, awaiting response.")
+    util.log(5,"Setup message sent, awaiting response.")
     for i in range(3):
       try:
         self.q.get(timeout=.1)
         break
       except queue.Empty:
-        if DEBUG:
-          print("Retransmit setup...")
+        util.log(6,"Retransmit setup...")
         self._send(buf)
     if not self.blksize:
       raise ValueError("Channel setup timeout")
@@ -88,7 +86,7 @@ class VWTPConnection:
       pass
     elif op  == 0xA1: #params response
       if self.blksize:
-        print ("WARN: Potential connection fault: recieved 'parameter response' when already configured!\nDropping it and hoping nothing breaks...")
+        util.log(3,"Potential connection fault: recieved 'parameter response' when already configured!\nDropping it and hoping nothing breaks...")
         return
       self.params = buf
       self.blksize = buf[0] + 1 # 0 is "1 frame"
@@ -96,8 +94,8 @@ class VWTPConnection:
       acktime = buf[1] >> 6 #scale is 100ms, 10ms, 1ms, .1ms
       self.acktime = (scale[acktime] * (buf[1] & 0x3F)) * 0.001 #go from ms to s.
       self.packival = (scale[buf[3] >> 6] * (buf[3] & 0x3F)) * 0.001
-      if DEBUG:
-        print("Parameter response received. channel parameters:",
+      util.log(5,"Parameter response received."
+      util.log(6,"channel parameters:",
           "\nTimeout in ms:",self.acktime * 1000,"\nMinimum Interval between frames in ms:",self.packival * 1000,"\nBlock Size:",self.blksize)
       self.q.put(None) #just stuff *something* in there to break the retry loop
     elif op & 0xf0 == 0xB0 or op & 0xf0 == 0x90:
@@ -117,14 +115,12 @@ class VWTPConnection:
         self.framebuf += buf
       if op & 0x10 == 0x10:
         if self.framelen != len(self.framebuf):
-          print("WARN: frame length mismatch! expected {}, got {}. Attempting to continue...".format(self.framelen, len(self.framebuf)))
+          util.log(3,"Frame length mismatch! expected {}, got {}. Attempting to continue...".format(self.framelen, len(self.framebuf)))
         self.recv(bytes(self.framebuf))
         self.framebuf = None
 
   def recv(self, frame):
-    global DEBUG
-    if DEBUG:
-      print("Assembled VWTP message:",frame)
+    util.log(5,"Assembled VWTP message:",frame)
     if self.callback: #if we have a callback, call it
       self.callback(frame)
     else: #else buffer the frames until the reader swings around
@@ -242,36 +238,31 @@ class VWTPStack:
     if dest in self.framebuf:
       return
     else:
-      if DEBUG:
-        print("Registering simple-frame handler for dest:",dest)
+      util.log(6,"Registering simple-frame handler for dest:",dest)
       self.framebuf[dest] = queue.Queue()
 
   def _unregister(self, dest): #note: only one user of an address can exist at a time!
     global DEBUG
     if dest in self.framebuf:
       del self.framebuf[dest]
-      if DEBUG:
-        print("Unregistering simple-frame handler for dest:",dest)
+      util.log(6,"Unregistering simple-frame handler for dest:",dest)
 
   def _recv(self,msg):
     global DEBUG
     if msg.arbitration_id in self.connections:
-      if DEBUG:
-        print("Got VWTP subframe:",msg)
+      util.log(5,"Got VWTP subframe:",msg)
       self.connections[msg.arbitration_id]._recv(msg.data) #note: _recv is for CAN frame data, recv is called when a *VWTP* frame is constructed.
     elif msg.arbitration_id in self.framebuf:
-      if DEBUG:
-        print("Got link control frame:",msg)
+      util.log(5,"Got link control frame:",msg)
       self.framebuf[msg.arbitration_id].put(msg.data)
 
   def send(self,msg):
-    if DEBUG:
-      print("Sending frame:",msg)
+    util.log(5,"Sending frame:",msg)
     self.socket.send(msg)
 
   def connect(self,dest,callback=None,proto=1): #note: the *logical* destination, also known as the unit identifier
     if DEBUG:
-      print("Connecting to ECU:",dest)
+    util.log(5,"Connecting to ECU:",dest)
     #connect frame format:
     #0x0: component ID
     #0x1: opcode (0xC0: setup request, 0xD0: positive respose, 0xD6..D8: negative response)
@@ -298,8 +289,7 @@ class VWTPStack:
     tx = (blob[5] * 256) + blob[4]
     conn = VWTPConnection(self,tx,callback) #tx is usually 0x740.
     self.connections[0x300] = conn #FIXME: multiple connections at once
-    if DEBUG:
-      print("Connected")
+    util.log(5,"Connected")
     conn.open()
     return conn
 
@@ -307,8 +297,7 @@ class VWTPStack:
     con._send([0xA8])
     for k,v in self.connections.items():
       if v is con:
-        if DEBUG:
-          print("Disconnected from ECU channel:",k)
+        util.log(5, "Disconnected from ECU channel:",k)
         del self.connections[k]
         break
 

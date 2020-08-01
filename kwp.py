@@ -3,8 +3,7 @@ import io
 import threading
 import queue
 import time
-
-DEBUG=False
+import util
 
 #methods are stateless; used for metadata storage only.
 class KWPRequest:
@@ -34,12 +33,12 @@ requests = {
 "startDiagnosticSession": KWPRequest(0x10, "B"),
 "ecuReset": KWPRequest(0x11),
 "readFreezeFrameData": KWPRequest(0x12),
-"readDiagnosticTroubleCodes": KWPRequest(0x13),
+"readDiagnosticTroubleCodes": KWPRequest(0x13), #this reads *all* DTCs the module supports!
 "clearDiagnosticInformation": KWPRequest(0x14),
 "readStatusOfDiagnosticTroubleCodes": KWPRequest(0x17),
-"readDiagnosticTroubleCodesByStatus": KWPRequest(0x18, "s"),
+"readDiagnosticTroubleCodesByStatus": KWPRequest(0x18, "s"), #this can be used to read only "tripped" DTCs
 "UDSreadDiagnosticTroubleCodes": KWPRequest(0x19), #UDS "read DTCs"
-"readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs.
+"readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs?
 "stopDiagnosticSession": KWPRequest(0x20),
 "readDataByLocalIdentifier": KWPRequest(0x21, "B"),
 "readDataByCommonIdentifier": KWPRequest(0x22, "B"),
@@ -64,7 +63,7 @@ requests = {
 "writeDataByLocalIdentifier": KWPRequest(0x3B),
 "writeMemoryByAddress": KWPRequest(0x3D),
 "testerPresent": KWPRequest(0x3E), #keepalive message.
-"escCode": KWPRequest(0x80) #not part of diagnostic services specification; KWP 2000 only (not even sure what this *is*...)
+"escCode": KWPRequest(0x80) #not part of diagnostic services specification; KWP 2000 spec says it's for manufacturer-specific services.
 }
 
 #and a lookup of the response codes. the upper half is manufacturer-specific.
@@ -149,15 +148,13 @@ class KWPSession:
 
   def request(self, req, *params):
     global framelock, DEBUG
-    if DEBUG:
-      if len(params) == 0:
-        print("Performing request:",req)
-      else:
-        print("Performing request '{}' with params: {}".format(req,params))
+    if len(params) == 0:
+      util.log(5,"Performing request:",req)
+    else:
+      util.log(5,"Performing request '{}' with params: {}".format(req,params))
     if not req in requests: #if we don't have a generic, try the OEM.
       req = self.mfrsrv[req]
-      if DEBUG:
-        print("Is OEM Request")
+      util.log(5,"Is OEM Request")
     else:
       req = requests[req]
     while True: #this is for request repetition due to "EAGAIN" response.
@@ -174,22 +171,19 @@ class KWPSession:
               self.check(resp, req.num + 0x40)
               return resp
             except EWAIT:
-              if DEBUG:
-                print("EWAIT")
+              util.log(6,"EWAIT")
               #recv is blocking, so just immediately keep waiting.
             except queue.Empty:
               raise ETIME("KWP Timeout")
       except EAGAIN: #repeat the request after a short delay (50ms)
-        if DEBUG:
-          print("EAGAIN")
+        util.log(6,"EAGAIN")
         time.sleep(self.transport.packival)
   def recv(self,timeout=None):
     return self.transport.read(timeout) #the queue-based implementation is a blocking call if the queue is empty.
 
   def check(self, resp, val):
     if resp[0] == 0x7F:
-      if DEBUG:
-        print("Got Negative response:",resp)
+      util.log(5,"Got Negative response:",resp)
       if resp[1] == 0x21 or resp[1] == 0x23: #repeat the request; either busy or "not done yet"
         raise EAGAIN
       elif resp[1] == 0x78: #"Response Pending"
