@@ -15,7 +15,7 @@ import struct
 
 class VWTPConnection:
   def __init__(self, num):
-    self.num = num
+    self.num = hex(num) #we don't do any math on it, so we can stringify it here.
     self.framebuf = None
     self.framelen = 0
     self.start = True
@@ -24,17 +24,17 @@ class VWTPConnection:
   def _recv(self, msg):
     buf = msg.data #the raw buffer contents of a CAN frame.
     op = buf[0]
-    buf = buf[1:]
+    buf = buf[1:] #drop the opcode from the frame.
     if op == 0xA8: #disconnect
       self.close()
     elif op == 0xA3: #"ping"
       util.log(5,"[{}] Ping!".format(self.num))
-    elif op  == 0xA1: #params response
+    elif op  == 0xA1: #params response, also sent as a "Pong!"
       if self.blksize:
-        util.log(6,"[{}] Parameter/Ping response.".format(self.num))
+        util.log(6,"[{}] Pong!".format(self.num)) #already configured, so it's a pong.
         #util.log(3,"[{}] Potential connection fault: recieved 'parameter response' when already configured!".format(self.num))
         return
-      self.blksize = buf[0] + 1 # 0 is "1 frame"
+      self.blksize = buf[0] + 1 # 0 is "1 frame" #we don't actually *use* this, other than "config or pong?"
       scale = [ .1, 1, 10, 100]
       acktime = buf[1] >> 6 #scale is 100ms, 10ms, 1ms, .1ms
       acktime = (scale[acktime] * (buf[1] & 0x3F)) * 0.001 #go from ms to s.
@@ -43,26 +43,22 @@ class VWTPConnection:
       util.log(6,"channel parameters:",
           "\nTimeout in ms:",acktime * 1000,"\nMinimum Interval between frames in ms:",packival * 1000,"\nBlock Size:",self.blksize)
     elif op & 0xf0 == 0xB0 or op & 0xf0 == 0x90:
-      util.log(5,"Acked block")
+      util.log(5,"[{}] Acked block".format(self.num))
     else: #assume it's a data packet.
       seq = op & 0x0f
       if op & 0x20 == 0 and seq == self.seq: #expecting ACK
-        util.log(5,"Expecting Ack")
+        util.log(5,"[{}] Expecting Ack".format(self.num))
       self.seq += 1
       if self.seq == 0x10:
         self.seq = 0
       if not self.framebuf: #first frame of a transaction
-        util.log(5,"Frame start")
+        util.log(5,"[{}] Frame start".format(self.num))
         if op & 0x10 == 0x10:
-          util.log(5,"Short frame")
-          self.recv(bytes(buf)) #for non-KWP transfers, the frame length for short frames is dropped.
+          util.log(5,"[{}] Short frame".format(self.num))
+          self.recv(bytes(buf)) #single-frame short-circuit
+          self.framebuf = None
           return
-        if len(buf) >= 2: #make sure the frame is big enough to actually *be* the first...
-          self.framelen = struct.unpack(">H", buf[0:2])[0]
-        else: #certainly not the first frame, but we're not synchronized yet.
-          framelen = -1 #so add a poison value
         self.framebuf = bytearray()
-#        self.framebuf += buf[2:] #drop the first two bytes
         self.framebuf += buf #the length is only a feature of VWTP/KWP, and is not part of VWTP itself.
       else:
         util.log(6,"[{}] Subframe recieved".format(self.num))
@@ -84,7 +80,7 @@ class VWTPConnection:
 
 if __name__ == "__main__":
   sessions = {}
-  sock = can.interface.Bus(channel="can0", bustype="socketcan")
+  sock = can.interface.Bus(channel="vcan0", bustype="socketcan")
   while True:
     msg = sock.recv()
     if not msg.arbitration_id in sessions:
