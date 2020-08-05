@@ -94,7 +94,7 @@ class VWTPConnection:
       acktime = buf[1] >> 6 #scale is 100ms, 10ms, 1ms, .1ms
       self.acktime = (scale[acktime] * (buf[1] & 0x3F)) * 0.001 #go from ms to s.
       self.packival = (scale[buf[3] >> 6] * (buf[3] & 0x3F)) * 0.001
-      util.log(5,"Parameter response received."
+      util.log(5,"Parameter response received.")
       util.log(6,"channel parameters:",
           "\nTimeout in ms:",self.acktime * 1000,"\nMinimum Interval between frames in ms:",self.packival * 1000,"\nBlock Size:",self.blksize)
       self.q.put(None) #just stuff *something* in there to break the retry loop
@@ -261,7 +261,6 @@ class VWTPStack:
     self.socket.send(msg)
 
   def connect(self,dest,callback=None,proto=1): #note: the *logical* destination, also known as the unit identifier
-    if DEBUG:
     util.log(5,"Connecting to ECU:",dest)
     #connect frame format:
     #0x0: component ID

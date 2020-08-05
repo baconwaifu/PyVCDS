@@ -1,0 +1,8 @@
+Notes on VWTP that aren't covered by jazdw's paper:
+
+VWTP/KWP:
+Nothing to add.
+
+Non-KWP traffic:
+The length is not included in the message, and is instead implicit.
+
