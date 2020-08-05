@@ -204,7 +204,7 @@ def recv(frame):
     conn = VWTPConnection(frame.data[0], (frame.data[5] * 256) + frame.data[4])
     inbound[conn.rx] = conn
     util.log(4,"Starting VWTP Connection to:",frame.data[0])
-    util.log(4,"Module name:",vw.modules(frame.data[0]))
+    util.log(4,"Module name:",vw.modules[frame.data[0]])
   elif rx in buffers:
     if rx & 0xf00 == 0x200:
       util.log(5,"Creating VWTP Connection")

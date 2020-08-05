@@ -43,9 +43,11 @@ requests = {
 "readDataByLocalIdentifier": KWPRequest(0x21, "B"),
 "readDataByCommonIdentifier": KWPRequest(0x22, "B"),
 "readMemoryByAddress": KWPRequest(0x23),
+"UDSReadScalingDataByIdentifier": KWPRequest(0x24),
 "setDataRates": KWPRequest(0x26),
 "securityAccess": KWPRequest(0x27),
 "UDSauthentication": KWPRequest(0x29), #Is actually UDS; used for more advanced authentication such as PKI
+"UDSReadDataByIdentifierPeriodic": KWPRequest(0x2A), #Note: DO NOT USE. architecture does not support asynchronous responses!
 "DynamicallyDefineLocalIdentifier": KWPRequest(0x2C),
 "writeDataByCommonIdentifier": KWPRequest(0x2E),
 "inputOutputControlByCommonIdentifier": KWPRequest(0x2F),
@@ -57,13 +59,18 @@ requests = {
 "requestUpload": KWPRequest(0x35),
 "transferData": KWPRequest(0x36),
 "requestTransferExit": KWPRequest(0x37),
-"startRoutineByAddress": KWPRequest(0x38),
+"startRoutineByAddress": KWPRequest(0x38), #UDS: RequestFileTransfer
 "stopRoutineByAddress": KWPRequest(0x39),
 "requestRoutineResultsByAddress": KWPRequest(0x3A),
 "writeDataByLocalIdentifier": KWPRequest(0x3B),
 "writeMemoryByAddress": KWPRequest(0x3D),
 "testerPresent": KWPRequest(0x3E), #keepalive message.
-"escCode": KWPRequest(0x80) #not part of diagnostic services specification; KWP 2000 spec says it's for manufacturer-specific services.
+"escCode": KWPRequest(0x80), #not part of diagnostic services specification; KWP 2000 spec says it's for manufacturer-specific services.
+"UDSAccessTimingParameters": KWPRequest(0x83), #UDS is "transport-compatible" with KWP, meaning we can see *what* command is run.
+"UDSSecureTransmission": KWPRequest(0x84), #which means the tracer can see it too.
+"UDSControlDTCs": KWPRequest(0x85),
+"UDSResponseOnEvent": KWPRequest(0x86),
+"UDSLinkControl": KWPRequest(0x87),
 }
 
 #and a lookup of the response codes. the upper half is manufacturer-specific.
