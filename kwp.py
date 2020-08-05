@@ -109,16 +109,40 @@ params = {
 }
 
 
+class KWPException(Exception):
+  pass
+
 #repeat the question.
-class EAGAIN(Exception):
+class EAGAIN(KWPException):
   pass
 
 #please wait.
-class EWAIT(Exception):
+class EWAIT(KWPException): #should be EBUSY. TODO: change that.
   pass
 
 #Timeout.
-class ETIME(Exception):
+class ETIME(KWPException):
+  pass
+
+class EPERM(KWPException): #permission denied
+  pass
+
+class ENEEDAUTH(KWPException): #needs authentication (ie: SecurityAccessDenied but before authentication)
+  pass
+
+class ENOENT(KWPException):
+  pass
+
+class E2BIG(KWPException):
+  pass
+
+class EFAULT(KWPException):
+  pass
+
+class EINVAL(KWPException):
+  pass
+
+class EAUTH(KWPException):
   pass
 
 def timeout(sess, timeout):
@@ -195,12 +219,20 @@ class KWPSession:
         raise EAGAIN
       elif resp[1] == 0x78: #"Response Pending"
         raise EWAIT
-      msg = "Unknown response"
+      elif resp[1] == 0x33:
+        raise EPERM #TODO: add authentication support, and check that.
+      elif resp[1] == 0x31:
+        raise ENOENT
+      elif resp[1] == 0x35:
+        raise EAUTH
+      elif resp[1] == 0x12:
+        raise EINVAL
+      msg = "<Unknown response {}>".format(hex(resp[1]))
       if resp[1] in responses:
         msg = reponses[resp[1]] #give us the error's name.
       elif resp[1] in self.mfrresp:
         msg = self.mfrresp[resp[1]] #manufacturer-specific error
-      raise NotImplementedError(msg) #this is mostly just a matter of *which* error to throw.
+      raise KWPException(msg)
 
     elif resp[0] == val:
       return True

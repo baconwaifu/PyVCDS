@@ -162,6 +162,7 @@ class VWModule:
   def getDTC(self): #note: this returns a *different format* to the one below.
     dtcs = {}
     for i in range(256):
+      req = None #hoist the scope...
       try:
         req = self.kwp.request("readDiagnosticTroubleCodes", bytes([i]))
         count = req[1]
@@ -170,8 +171,10 @@ class VWModule:
           for ii in range(0,count*2,2):
             dtc = req[ii+2:ii+4]
             dtcs[i].append(dtc)
-      except NotImplementedError:
-        pass #nom it, means invalid group
+      except kwp.EPERM:
+        util.log(3,"Got permission denied reading DTC group '{}'?".format(hex(i)))
+      except kwp.KWPException:
+        pass #just means invalid group or something
     return dtcs
 
   def readDTC(self):
@@ -179,7 +182,7 @@ class VWModule:
     #unfortunately, a stock car's module outfit is extremely limited without being able to re-code the gateway.
     try: #this mimics the zurich's request pattern for DTCs by "tripped" status.
       req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02FF, group 00; seems to work on transmission
-    except NotImplementedError:
+    except kwp.KWPException:
       req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00FF, group 00; works on engine, may work on others?
     dtcs = []
     count = req[1]
@@ -261,15 +264,25 @@ if __name__ == "__main__":
   kw = kwp.KWPSession(conn)
   with conn:
     kw.begin(0x89)
-    blks = {}
+    blks = {"open": {}, "locked":[]}
+    codes = {"open": {}, "locked": []}
     for i in range(1,256):
      try:
       blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
-      blks[i] = blk
-     except (ValueError, kwp.ETIME):
+      blks["open"][i] = blk
+     except kwp.EPERM:
+      blks["locked"].append(hex(i))
+     except (ValueError, kwp.ETIME, kwp.KWPException):
+      pass
+     try:
+      blk = kw.Request("readDataByCommonIdentifier", i)
+      codes["open"][i] = blk
+     except kwp.EPERM:
+      codes["locked"].append(hex(i))
+     except (ValueError, kwp.KWPException):
       pass
     fd = open("blks.json", "w")
-    fd.write(json.dumps(json.loads(jsonpickle.dumps(blks)), indent=4))
+    fd.write(json.dumps(json.loads(jsonpickle.dumps({"blocks": blks, "codes": codes})), indent=4))
     fd.close()
   kw.close()
   import sys; sys.exit(0) #need to do this because of threads.

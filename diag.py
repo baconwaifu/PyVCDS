@@ -71,7 +71,9 @@ def oem(vin):
                     print(vw.labels[module]["dtc"][d])
                   else:
                     print("Unknown DTC '{}'".format(d))
-            except (NotImplementedError, ValueError, queue.Empty):
+            except kwp.EPERM:
+              print("Permissions error getting DTCs from module, skipping")
+            except (ValueError, queue.Empty, kwp.KWPException):
               print("Unknown fault getting DTCs from module, skipping")
         elif op == 2: #read measuring block
           mods = {}
