@@ -3,7 +3,9 @@
 PyVCDS is an attempt at implementing an open-source and cross-platform alternative to VCDS, using information that is freely available on the internet.
 
 first off, the usual NO WARRANTY EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE  
-and THIS IS EXPERIMENTAL SOFTWARE. I AM NOT RESPONSIBLE IF YOU BRICK YOUR CAR (such as, but NOT LIMITED TO using untested or experimental features such as long-coding)
+and THIS IS EXPERIMENTAL SOFTWARE. I AM NOT RESPONSIBLE IF YOU DAMAGE, BRICK, OR OTHERWISE IMPACT OPERATION OF YOUR CAR (such as, but NOT LIMITED TO using untested or experimental features such as long-coding)
+
+I AM NOT AFFILIATED WITH ROSS-TECH IN ANY WAY, AND HAVE NOT USED ANY VCDS MATERIAL IN THIS PROGRAM.
 
 THE ELM327 IS NOT SUPPORTED. earlier versions have numerous bugs around raw CAN transport, which includes the clones.  
 System requirements:
