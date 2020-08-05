@@ -220,6 +220,7 @@ def recv(frame):
   else:
     util.log(4,"Untracked Frame: ",frame)
 
-util.log(4,"KWPTracer Started")
-while True:
-  recv(bus.recv())
+if name == "__main__":
+  util.log(4,"KWPTracer Started")
+  while True:
+    recv(bus.recv())
