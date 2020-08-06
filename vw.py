@@ -6,7 +6,20 @@ import vcds_label #VCDS label file parsing is split off.
 import util
 import label
 
-labels = LazyLabel(
+class LabelStorage:
+  def __init__(self, path, tree):
+    self.backing = tree
+  def flush(self):
+    with open(self.path, "w") as fd:
+      fd.write(json.dumps(self.backing))
+  def __getitem__(self, idx):
+    self.backing.__getitem__(idx)
+  def __setitem__(self, idx, val):
+    self.backing.__setitem(idx, val)
+  def __contains__(self, idx):
+    return self.backing.__contains__(idx)
+
+labels = LabelStorage("~/.pyvcds/labels/labels.json", label.LazyLabel())
 
 try:
   workshop = util.config["vw"]["workshop"] #workshop code. assigned by VW to licensed workshops.
@@ -84,8 +97,8 @@ def parseBlock(block, mod=None): #takes a raw KWP response.
       blk.append(scalers[256].unscale(buf[i+1], buf[i+2]))
   if mod:
     try:
-      for i in range(4)
-      blk[i].label = labels[mod.pn][i]
+      for i in range(4):
+        blk[i].label = labels[mod.pn][i]
     except KeyError:
       pass
   return blk
@@ -158,6 +171,7 @@ class VWModule:
     self.kwp = kwp
 
   def readID(self):
+    self.pn = True
     ret = {}
     blk = self.readBlock(81)
     util.log(4,"ID structure parsing not implemented yet; raw message:",blk)
@@ -208,10 +222,12 @@ class VWModule:
         dtcs.append(dtc)
     return dtcs
 
-  def readBlock(self, blk):
+  def measureBlock(self, blk):
     if not self.pn:
       self.readID()
-    return parseBlock(self.kwp.request("getDataByLocalIdentifier", blk), self)
+    return parseBlock(self.readBlock(blk), self)
+  def readBlock(self, blk):
+    return self.kwp.request("readDataByLocalIdentifier", blk)
   
   def readLongCode(self,code):
     raise NotImplementedError("Need VCDS Trace to figure out KWP commands")
