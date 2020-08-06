@@ -2,10 +2,11 @@ import menu
 import struct
 import vw
 import kwp
+import vwtp
 
 def mod_menu(car):
-  mod = menu.dselector({k:v for k,v in vw.modules.items() if k in car.enabled })
-  mod = car.module(mod)
+  mod = menu.dselector({k:v for k,v in vw.modules.items() if k in car.enabled }, "Which Module?")
+  mod = car.module(int(mod))
   with mod as m:
     while True:
       op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Back"])
@@ -20,11 +21,11 @@ def mod_menu(car):
       if op == 4:
         raise NotImplementedError("Writing module coding is currently unavailable")
       if op == 5:
-        
+        pass
       if op == 6:
         break
 
-def menu(sock):
+def main(sock):
     with vwtp.VWTPStack(sock) as stack, vw.VWVehicle(stack) as car: #host the connection outside the menu loop.
       while True:
         opt = ["Enumerate Modules", "Connect to Module", "Read DTCs by module", "Read Measuring Data Block by module", "Long-Coding", "Load Labels from VCDS", "Load Labels from JSON", "Back"]
@@ -37,6 +38,7 @@ def menu(sock):
             print(" ",vw.modules[mod])
         elif op == 1: #Connect to Module
           if not car.scanned:
+            print("Enumerating modules, please wait")
             car.enum()
           mod_menu(car)
         elif op == 2:

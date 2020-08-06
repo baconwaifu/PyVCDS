@@ -8,7 +8,7 @@ def selector(lst):
       ret = int(iput)
       if ret < len(lst):
         return ret
-    except FormatError:
+    except ValueError:
       print("Enter the integer value of the selected option")
 
 def dselector(dct, header="Do What?"):
@@ -18,7 +18,7 @@ def dselector(dct, header="Do What?"):
       for k,v in dct.items():
         print("{}: {}".format(k,v))
       ret = input("> ")
-      if ret in dct:
+      if ret in dct or int(ret) in dct: #some of these use integer keys instead of strings
         return ret
-    except FormatError:
+    except ValueError:
       print("Enter the integer value of the selected option")
