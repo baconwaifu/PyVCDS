@@ -2,6 +2,9 @@
 
 import re
 import io
+import threading
+
+BASEDIR = "."
 
 #Ross-Tech label parser
 
