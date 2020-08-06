@@ -101,9 +101,10 @@ services = {
 
 recv = True
 def recvthread(socket, stack):
-  global recv
-  while recv:
-    stack._recv(socket.recv())
+  while stack.open:
+    msg = socket.recv(.05)
+    if msg:
+      stack._recv(msg)
 
 class OBD2Message:
   def __init__(self, l):
@@ -129,7 +130,7 @@ class OBD2ECU:
 
 class OBD2Interface:
   def __init__(self, socket):
-    recv = True
+    self.open = True
     self.recvthread = threading.Thread(target=recvthread, args=(socket,self))
     self.ecus = {}
     self.buffers = {
@@ -151,7 +152,6 @@ class OBD2Interface:
       0x7EE: None
     }
     self.socket = socket
-    recv = True
     self.recvthread.start()
     resp = self.readPID(0) #Supported PIDs
     for k,v in resp.items():
@@ -246,4 +246,5 @@ class OBD2Interface:
   def __enter__(self):
     return self
   def __exit__(self, a, b, c):
-    recv = False
+    self.open = False
+    self.recvthread.join() #and wait for thread to die.

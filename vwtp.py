@@ -25,10 +25,11 @@ _threadrun = True
 #VWTP was architectured for an asynchronous socket, but python sockets are synchronous,
 #so we need a thread to do that for us.
 def recvthread(stack):
-  global _threadrun
   sock = stack.socket
-  while _threadrun:
-    stack._recv(sock.recv())
+  while stack.open:
+    msg = sock.recv(.05)
+    if msg:
+      stack._recv(msg)
 
 def pingthread(conn):
   while conn._open:
@@ -208,9 +209,10 @@ class VWTPConnection:
     return self.buffer.get(timeout=timeout)
 
   def close(self):
-    if self.open: #don't close the socket twice.
+    if self._open: #don't close the socket twice.
       self._open = False
       self.stack.disconnect(self) #call back to our stack manager for cleanup
+      self.pinger.join() #and wait for our pinger to die.
 
   def __exit__(self, type, value, traceback):
     self.close()
@@ -224,18 +226,19 @@ class VWTPConnection:
 
 class VWTPStack:
   def __init__(self,socket,sync=True):
-    global _threadrun
-    _threadrun = True
     self.socket = socket
     #a sparse list of connections based on recv address.
     self.connections = {}
     self.framebuf = {} #a sparse frame buffer based on recieved address. *must* register a dest before messages will be buffered!
     self.sync = sync
+    self.open = True
 
     if sync:
       #socket is synchronous, start the listener thread.
       self.recvthread = threading.Thread(target=recvthread, args=(self,))
       self.recvthread.start()
+    else:
+      self.recvthread = None
 
   def stop(self):
     pass
@@ -307,12 +310,15 @@ class VWTPStack:
     for k,v in self.connections.items():
       if v is con:
         util.log(5, "Disconnected from ECU channel:",k)
-        del self.connections[k]
+        try:
+          del self.connections[k]
+        except KeyError:
+          pass #this just means we've already disconnected.
         break
 
   def __enter__(self):
     return self
   def __exit__(self,a,b,c):
-    global _threadrun
-    if self.sync and self.recvthread:
-      _threadrun = False
+    self.open = False:
+    if self.recvthread:
+      self.recvthread.join()

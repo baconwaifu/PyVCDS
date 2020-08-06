@@ -10,8 +10,10 @@ import queue
 import menu
 
 def recv(socket, stack):
-  while True:
-    stack._recv(socket.recv())
+  while stack.open:
+    msg = socket.recv(.05)
+    if msg:
+      stack._recv(msg)
 
 
 
@@ -22,12 +24,12 @@ def oem(vin):
   global sock
   if vin.startswith("WVW"): 
     import menu_vw
-    menu_vw.menu(sock)
+    menu_vw.main(sock)
   else:
     print("Un-implemented OEM for VIN '{}'".format(vin))
     return    
 
-def menu():
+def main():
   global obd
   global vin
   opt = [ "Display VIN", "OEM Extended Diagnostics", "Inspection Readyness", "Display DTCs", "Advanced/Debugging", "Exit" ]
@@ -66,20 +68,13 @@ if args.bits:
   raise NotImplementedError("Dynamic bitrate selection is not yet supported")
 
 sock = can.interface.Bus(channel=bus, bustype='socketcan')
-#with obd2.OBD2Interface(sock) as obd:
 
-#recvthread = threading.Thread(target=recv,args=(sock,obd))
-#recvthread.start()
-
-#  vin = obd.readVIN()
-
-#recvthread.stop()
-
-vin = "WVW" #FIXME: remove once threads are working properly
+with obd2.OBD2Interface(sock) as obd: #get the VIN using OBD2.
+  vin = obd.readVIN()
 
 if args.vin:
-  print(vin)  
+  print(vin)
   sys.exit(0)
 
 while True:
-  menu()
+  main()

@@ -166,8 +166,8 @@ class KWPSession:
   def __init__(self, transport):
     self.transport = transport
     self.timethread = threading.Thread(target=timeout, args=(self,2))
-    self.mfrsrv = []
-    self.mfrresp = []
+    self.mfrsrv = {}
+    self.mfrresp = {}
   def mfr(self,service,resp):
     self.mfrsrv = service
     self.mfrresp = resp
