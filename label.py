@@ -83,6 +83,8 @@ def loadLabel(pn, fname):
           labels[blk]["name"] = tok[2]
         else:
           labels[blk][measure - 1] = (tok[2],tok[3])
+  if len(labels) == 0:
+    return None
   return labels
 
 def loadNewLabel(pn, fname): #"New" ross-tech labels, uses the newer redirect method
@@ -109,6 +111,8 @@ def loadNewLabel(pn, fname): #"New" ross-tech labels, uses the newer redirect me
           labels[blk]["name"] = tok[2]
         else:
           labels[blk][measure  -1] = (tok[2],tok[3])
+  if len(labels) == 0:
+    return None
   return labels
 
 def getPath(pn, addr, basedir="./Labels"):
