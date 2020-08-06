@@ -147,7 +147,7 @@ class VWModule:
     util.log(4,"ID structure parsing not implemented yet; raw message:",blk)
     return NotImplemented
 
-  def getManufactureInfo(self):
+  def readManufactureInfo(self):
     ret = {}
     blk = self.readBlock(80)
     util.log(4,"Manufacture info structure parsing not implemented yet; raw message:",blk)

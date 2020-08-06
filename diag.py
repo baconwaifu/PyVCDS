@@ -7,107 +7,32 @@ import can
 import obd2
 import threading
 import queue
+import menu
 
 def recv(socket, stack):
   while True:
     stack._recv(socket.recv())
 
-def selector(lst):
-  while True:
-    try:
-      print("Do What?")
-      for i in range(len(lst)):
-        print("{}: {}".format(i,lst[i]))
-      iput = input("> ")
-      ret = int(iput)
-      if ret < len(lst):
-        return ret
-    except FormatError:
-      print("Enter the integer value of the selected option")
 
-def dselector(dct, header="Do What?"):
-  while True:
-    try:
-      print(header)
-      for k,v in dct.items():
-        print("{}: {}".format(k,v))
-      ret = input("> ")
-      if ret in dct:
-        return ret
-    except FormatError:
-      print("Enter the integer value of the selected option")
 
 def advanced():
   pass
 
 def oem(vin):
   global sock
-  while True:
-    if vin.startswith("WVW"): 
-      import vwtp, kwp, vw
-      with vwtp.VWTPStack(sock) as stack, vw.VWVehicle(stack) as car:
-        opt = ["Enumerate Modules", "Read DTCs by module", "Read Measuring Data Block by module", "Long-Coding", "Load Labels from VCDS", "Load Labels from JSON", "Back"]
-        op = selector(opt)
-        if op == 0:
-          print("Enumerating modules, please wait")
-          car.enum()
-          print("Modules Available:")
-          for mod in car.enabled:
-            print(" ",vw.modules[mod])
-        elif op == 1:
-          if not car.scanned:
-            car.enum() #TODO: persistent `car` instance
-          for mod in car.enabled:
-            print("Checking module '{}'".format(vw.modules[mod]))
-            try:
-              with car.module(mod) as m:
-                dtc = m.readDTC()
-                if len(dtc) > 0:
-                  print("Found DTCs:")
-                else:
-                  print("No Faults detected")
-                for d in dtc:
-                  if d in vw.labels[module]["dtc"]:
-                    print(vw.labels[module]["dtc"][d])
-                  else:
-                    print("Unknown DTC '{}'".format(d))
-            except kwp.EPERM:
-              print("Permissions error getting DTCs from module, skipping")
-            except (ValueError, queue.Empty, kwp.KWPException):
-              print("Unknown fault getting DTCs from module, skipping")
-        elif op == 2: #read measuring block
-          mods = {}
-          for i in car.enabled:
-            mods[i] = vw.modules[i]
-          op2 = dselector(mods)
-          with car.module(mod) as mod:
-            blk = dselector(vw.labels[module]["blocks"])
-            blk = mod.readBlock(blk)
-            for b in blk:
-              print(b)
-        elif op == 3: #long-code
-          raise NotImplementedError("Need a CAN trace of someone with VCDS reading or writing a long-code")
-        elif op == 4:
-          raise NotImplementedError("VCDS Label parsing has not yet been implemented")
-        elif op == 5:
-          print("Path to the JSON file?")
-          path = input("> ")
-          fd = open(path, "r")
-          js = fd.read()
-          fd.close()
-          vw.loadLabelsFromJSON(js)
-        elif op == 6:
-          return
-    else:
-      print("Un-implemented OEM for VIN '{}'".format(vin))
-      return    
+  if vin.startswith("WVW"): 
+    import menu_vw
+    menu_vw.menu(sock)
+  else:
+    print("Un-implemented OEM for VIN '{}'".format(vin))
+    return    
 
 def menu():
   global obd
   global vin
   opt = [ "Display VIN", "OEM Extended Diagnostics", "Inspection Readyness", "Display DTCs", "Advanced/Debugging", "Exit" ]
   print("PyVCDS")
-  op = selector(opt)
+  op = menu.selector(opt)
   if op == 0:
     print(vin)
   elif op == 1:
