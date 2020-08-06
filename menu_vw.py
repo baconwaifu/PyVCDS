@@ -8,7 +8,7 @@ def mod_menu(car):
   mod = car.module(mod)
   with mod as m:
     while True:
-      op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Back"])
+      op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Back"])
       if op == 0:
         print(m.readID())
       if op == 1:
@@ -20,6 +20,8 @@ def mod_menu(car):
       if op == 4:
         raise NotImplementedError("Writing module coding is currently unavailable")
       if op == 5:
+        
+      if op == 6:
         break
 
 def menu(sock):

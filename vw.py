@@ -4,8 +4,14 @@ import vwtp
 import queue
 import vcds_label #VCDS label file parsing is split off.
 import util
+import label
 
-labels = None
+labels = LazyLabel(
+
+try:
+  workshop = util.config["vw"]["workshop"] #workshop code. assigned by VW to licensed workshops.
+except KeyError:
+  workshop = None
 
 def saveLabelsToJSON(fname):
   global labels
@@ -26,7 +32,10 @@ class blockMeasure:
     self.label = None
   def unscale(self, a, b):
     ret = blockMeasure(self.name, None)
-    ret.value = self.func(a,b)
+    try:
+      ret.value = self.func(a,b)
+    except DivideByZeroError:
+      ret.value = None #scaler fucked up, but we don't want to crash...
     return ret
   def __str__(self):
     if self.label:
@@ -65,14 +74,20 @@ scalers = {
 }
 
 
-def parseBlock(block): #takes a raw KWP response.
+def parseBlock(block, mod=None): #takes a raw KWP response.
   blk = []
   buf = block[2:]
-  for i in range(0, len(buf), 3):
+  for i in range(0, 3*4, 3):
     if buf[i] in scalers:
       blk.append(scalers[buf[i]].unscale(buf[i+1], buf[i+2]))
     else:
       blk.append(scalers[256].unscale(buf[i+1], buf[i+2]))
+  if mod:
+    try:
+      for i in range(4)
+      blk[i].label = labels[mod.pn][i]
+    except KeyError:
+      pass
   return blk
 
 def labelBlock(ecu, blknum, blk):
@@ -139,6 +154,7 @@ class VWModule:
   def __init__(self, kwp, mod):
     self.idx = mod
     self.name = modules[mod]
+    self.pn = None
     self.kwp = kwp
 
   def readID(self):
@@ -193,7 +209,9 @@ class VWModule:
     return dtcs
 
   def readBlock(self, blk):
-    return parseBlock(self.kwp.request("getDataByLocalIdentifier", blk))
+    if not self.pn:
+      self.readID()
+    return parseBlock(self.kwp.request("getDataByLocalIdentifier", blk), self)
   
   def readLongCode(self,code):
     raise NotImplementedError("Need VCDS Trace to figure out KWP commands")
@@ -210,6 +228,9 @@ class VWModule:
         print("Uploading... Do not turn the vehicle off or remove the adapter")
         kwp.request("InvalidRequestQWERTYU", code, buf) #FIXME: what's the right request?
         print("Done.")
+      else:
+        print("Aborted.")   
+        return
     else:
       print("Aborted.")
       return

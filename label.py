@@ -6,9 +6,8 @@ import io
 #Ross-Tech label parser
 
 #Class for lazy-loading label trees at runtime. are optionally flushed out to a JSON file when a new label is inserted or loaded.
-#note: due to laziness, iterators will remain unimplemented until loading is implemented.
-#the "lazy" to iterators is loading keys (and relevant child metadata) but leaving "dummy" objects as `v` in (k,v)
-#until it's actually accessed, at which point the information is loaded on-demand, or all at once (whichever is more efficient)
+#note: due to *my* laziness, iterators will remain unimplemented.
+#iteration over "all labeled parts" would be mostly useless.
 class LazyLabel:
   def __init__(self, d=None, parent=None, pn=None):
     self.backing = d
