@@ -30,6 +30,13 @@ def recvthread(stack):
   while _threadrun:
     stack._recv(sock.recv())
 
+def pingthread(conn):
+  while conn._open:
+    time.sleep(.5)
+    if conn._open:
+      util.log(6,"Ping!")
+      conn._send([0xa3])
+
 #note: the VWTP stack itself handles the sockets.
 #connections should *never* be instantiated directly!
 class VWTPConnection:
@@ -48,6 +55,7 @@ class VWTPConnection:
     self.tseq = 0 #the sequence the ECU is expecting to see
     self._open = False
     self.q = queue.Queue() #used for "await" by the channel setup.
+    self.pinger = threading.Thread(target=pingthread, args=(self,))
 
   def open(self):
     global DEBUG
@@ -72,6 +80,7 @@ class VWTPConnection:
         self._send(buf)
     if not self.blksize:
       raise ValueError("Channel setup timeout")
+    self.pinger.start()
     self.tx=self._tx
 
   def _recv(self, msg):
@@ -83,10 +92,11 @@ class VWTPConnection:
     if op == 0xA8: #disconnect
       self.close()
     elif op == 0xA3: #"ping"
-      pass
+      pass #FIXME: send parameter response method
     elif op  == 0xA1: #params response
       if self.blksize:
-        util.log(3,"Potential connection fault: recieved 'parameter response' when already configured!\nDropping it and hoping nothing breaks...")
+        util.log(6,"Pong!")
+        #util.log(3,"Potential connection fault: recieved 'parameter response' when already configured!\nDropping it and hoping nothing breaks...")
         return
       self.params = buf
       self.blksize = buf[0] + 1 # 0 is "1 frame"

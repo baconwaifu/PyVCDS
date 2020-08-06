@@ -271,7 +271,7 @@ class VWVehicle:
 
 if __name__ == "__main__":
   import json,jsonpickle
-  sock = can.interface.Bus(channel='vcan0', bustype='socketcan')
+  sock = can.interface.Bus(channel='can0', bustype='socketcan')
   stack = vwtp.VWTPStack(sock)
 
   car = VWVehicle(stack)
@@ -288,20 +288,26 @@ if __name__ == "__main__":
     blks = {"open": {}, "locked":[]}
     codes = {"open": {}, "locked": []}
     for i in range(1,256):
+     print(i)
      try:
-      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
-      blks["open"][i] = blk
+#      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
+#      blks["open"][i] = blk
+      pass
      except kwp.EPERM:
       blks["locked"].append(hex(i))
      except (ValueError, kwp.ETIME, kwp.KWPException):
       pass
      try:
-      blk = kw.Request("readDataByCommonIdentifier", i)
+      blk = kw.request("readDataByCommonIdentifier", i)
       codes["open"][i] = blk
      except kwp.EPERM:
       codes["locked"].append(hex(i))
-     except (ValueError, kwp.KWPException):
-      pass
+     except ValueError:
+      conn = stack.connect(0x01)
+      kw = kwp.KWPSession(conn)
+      kw.begin(0x89)
+     except kwp.KWPException as e:
+      print(e)
     fd = open("blks.json", "w")
     fd.write(json.dumps(json.loads(jsonpickle.dumps({"blocks": blks, "codes": codes})), indent=4))
     fd.close()

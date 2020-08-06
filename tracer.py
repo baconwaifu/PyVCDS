@@ -13,7 +13,7 @@ reqmap = {}
 for k,v in kwp.requests.items():
   reqmap[v.num] = k #create a reverse-mapping of request ID to names.
 
-bus = can.interface.Bus(channel="vcan0", bustype="socketcan")
+bus = can.interface.Bus(channel="can0", bustype="socketcan")
 
 inbound = {} #from car
 outbound = {} #to car
@@ -141,7 +141,10 @@ class VWTPConnection:
       if self.outseq == 0x10:
         self.outseq = 0
       if not self.outbuf: #first frame of a transaction
-        self.outlen = struct.unpack(">H", buf[0:2])[0]
+        if len(buf) < 2:
+          self.outlen = -1
+        else:
+          self.outlen = struct.unpack(">H", buf[0:2])[0]
         util.log(6,"VWTP transmission start from {}, len {}".format(frame.arbitration_id,self.inlen))
         self.outbuf = bytearray()
         self.outbuf += buf[2:] #because bytearray.
@@ -220,7 +223,7 @@ def recv(frame):
   else:
     util.log(4,"Untracked Frame: ",frame)
 
-if name == "__main__":
+if __name__ == "__main__":
   util.log(4,"KWPTracer Started")
   while True:
     recv(bus.recv())

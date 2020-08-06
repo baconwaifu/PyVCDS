@@ -41,7 +41,7 @@ requests = {
 "readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs?
 "stopDiagnosticSession": KWPRequest(0x20),
 "readDataByLocalIdentifier": KWPRequest(0x21, "B"),
-"readDataByCommonIdentifier": KWPRequest(0x22, "B"),
+"readDataByCommonIdentifier": KWPRequest(0x22, "<H"),
 "readMemoryByAddress": KWPRequest(0x23),
 "UDSReadScalingDataByIdentifier": KWPRequest(0x24),
 "setDataRates": KWPRequest(0x26),
@@ -213,6 +213,7 @@ class KWPSession:
     return self.transport.read(timeout) #the queue-based implementation is a blocking call if the queue is empty.
 
   def check(self, resp, val):
+    global responses
     if resp[0] == 0x7F:
       util.log(5,"Got Negative response:",resp)
       if resp[1] == 0x21 or resp[1] == 0x23: #repeat the request; either busy or "not done yet"
@@ -229,7 +230,7 @@ class KWPSession:
         raise EINVAL
       msg = "<Unknown response {}>".format(hex(resp[1]))
       if resp[1] in responses:
-        msg = reponses[resp[1]] #give us the error's name.
+        msg = responses[resp[1]] #give us the error's name.
       elif resp[1] in self.mfrresp:
         msg = self.mfrresp[resp[1]] #manufacturer-specific error
       raise KWPException(msg)

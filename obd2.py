@@ -50,7 +50,7 @@ services = {
 0x2F: "Fuel Tank Level Input",
 0x30: "Warm-ups since codes cleared",
 0x31: "Distance Traveled since codes cleared",
-0x33: "Absolute Barometric Pressure"
+0x33: "Absolute Barometric Pressure",
 0x40: "Extended PIDs Supported (0x40)", #bitmask
 0x41: "Monitor status this start",
 0x42: "Control Module Voltage",
