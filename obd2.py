@@ -153,7 +153,7 @@ class OBD2Interface:
     }
     self.socket = socket
     self.recvthread.start()
-    resp = self.readPID(0) #Supported PIDs
+    resp = self.readPID(1, 0) #Supported PIDs
     for k,v in resp.items():
       pids = {}
       pack = struct.unpack(">I", v[3:8])[0]
@@ -207,12 +207,6 @@ class OBD2Interface:
           pid = buf[2]
           self.buffers[msg.arbitration_id].put(buf[1:l+2])
 
-  def readVIN(self):
-    resp = readPID(9,2) #Service 9, PID 2 "Read VIN"
-    assert resp[0] == 0x49, "wrong response?"
-    assert resp[1] == 0x2, "not the VIN."
-    return resp[3:].decode("ASCII") #trust that the first one is correct...
-
   def readPID(self, svc, pid, ecu=0x7DF):
     global DEBUG
     dat = [ svc, pid]
@@ -227,6 +221,12 @@ class OBD2Interface:
     if len(ret) == 0:
       return None
     return ret
+
+  def readVIN(self):
+    resp = self.readPID(9,2) #Service 9, PID 2 "Read VIN"
+    assert resp[0] == 0x49, "wrong response?"
+    assert resp[1] == 0x2, "not the VIN."
+    return resp[3:].decode("ASCII") #trust that the first one is correct...
 
   def send(self, tx, data):
     assert len(data) < 8, "Trying to send more than 8 bytes in a request (does OBD2 allow that?)"
