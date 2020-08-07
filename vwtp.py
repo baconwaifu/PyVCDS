@@ -232,6 +232,7 @@ class VWTPStack:
     self.framebuf = {} #a sparse frame buffer based on recieved address. *must* register a dest before messages will be buffered!
     self.sync = sync
     self.open = True
+    self.buflock = threading.Lock()
 
     if sync:
       #socket is synchronous, start the listener thread.
@@ -248,26 +249,29 @@ class VWTPStack:
 
   def _register(self, dest):
     global DEBUG
-    if dest in self.framebuf:
-      return
-    else:
-      util.log(6,"Registering simple-frame handler for dest:",dest)
-      self.framebuf[dest] = queue.Queue()
+    with self.buflock:
+      if dest in self.framebuf:
+        return
+      else:
+        util.log(6,"Registering simple-frame handler for dest:",dest)
+        self.framebuf[dest] = queue.Queue()
 
   def _unregister(self, dest): #note: only one user of an address can exist at a time!
     global DEBUG
-    if dest in self.framebuf:
-      del self.framebuf[dest]
-      util.log(6,"Unregistering simple-frame handler for dest:",dest)
+    with self.buflock:
+      if dest in self.framebuf:
+        del self.framebuf[dest]
+        util.log(6,"Unregistering simple-frame handler for dest:",dest)
 
   def _recv(self,msg):
     global DEBUG
-    if msg.arbitration_id in self.connections:
-      util.log(5,"Got VWTP subframe:",msg)
-      self.connections[msg.arbitration_id]._recv(msg.data) #note: _recv is for CAN frame data, recv is called when a *VWTP* frame is constructed.
-    elif msg.arbitration_id in self.framebuf:
-      util.log(5,"Got link control frame:",msg)
-      self.framebuf[msg.arbitration_id].put(msg.data)
+    with self.buflock:
+      if msg.arbitration_id in self.connections:
+        util.log(5,"Got VWTP subframe:",msg)
+        self.connections[msg.arbitration_id]._recv(msg.data) #note: _recv is for CAN frame data, recv is called when a *VWTP* frame is constructed.
+      elif msg.arbitration_id in self.framebuf:
+        util.log(5,"Got link control frame:",msg)
+        self.framebuf[msg.arbitration_id].put(msg.data)
 
   def send(self,msg):
     util.log(5,"Sending frame:",msg)
@@ -319,6 +323,6 @@ class VWTPStack:
   def __enter__(self):
     return self
   def __exit__(self,a,b,c):
-    self.open = False:
+    self.open = False
     if self.recvthread:
       self.recvthread.join()
