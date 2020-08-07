@@ -46,7 +46,7 @@ requests = {
 "UDSReadScalingDataByIdentifier": KWPRequest(0x24),
 "setDataRates": KWPRequest(0x26),
 "securityAccess": KWPRequest(0x27),
-"UDSauthentication": KWPRequest(0x29), #Is actually UDS; used for more advanced authentication such as PKI
+"UDSauthentication": KWPRequest(0x29), #Is UDS, or control flow "on" in DaimerChrysler stuff.
 "UDSReadDataByIdentifierPeriodic": KWPRequest(0x2A), #Note: DO NOT USE. architecture does not support asynchronous responses!
 "DynamicallyDefineLocalIdentifier": KWPRequest(0x2C),
 "writeDataByCommonIdentifier": KWPRequest(0x2E),
@@ -172,7 +172,7 @@ class KWPSession:
     self.mfrsrv = service
     self.mfrresp = resp
 
-  def begin(self, *params):
+  def begin(self, *params): #manufacturer defined; VW 0x89: "DIAG"
     resp = self.request("startDiagnosticSession", *params)
     assert resp[0] == 0x50 #this is checked elsewhere, but make sure.
     self.timethread.start()

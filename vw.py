@@ -18,6 +18,8 @@ class LabelStorage:
     self.backing.__setitem(idx, val)
   def __contains__(self, idx):
     return self.backing.__contains__(idx)
+  def setpath(self, path):
+    label.BASEDIR = path #set the base search directory.
 
 labels = LabelStorage("~/.pyvcds/labels/labels.json", label.LazyLabel())
 
@@ -39,10 +41,11 @@ def loadLabelsFromJSON(js): #we store our labels in JSON. larger, but easier to 
   labels = json.loads(js)
 
 class blockMeasure:
-  def __init__(self, name, func):
+  def __init__(self, name, func, sz = 3):
     self.func = func
     self.name = name
     self.label = None
+    self.size = sz #just a flag for "variably sized result"
   def unscale(self, a, b):
     ret = blockMeasure(self.name, None)
     try:
@@ -83,19 +86,26 @@ scalers = {
 0x37: blockMeasure("seconds", lambda a,b: (a*b)/200),
 0x51: blockMeasure("°CF", lambda a,b: ((a*11200)+(b*436))/1000), #torsion; check formula.
 0x5E: blockMeasure("Nm", lambda a,b: a*((b/50)-1)), #torque; check formula.
+0x5F: blockMeasure("", lambda b,a: b[1:b[0] + 1], 4), #String, no suffix.
 0x100: blockMeasure("[Unknown Unit]", lambda a,b: (a << 8) | b)
 }
 
 
 def parseBlock(block, mod=None): #takes a raw KWP response.
   blk = []
-  buf = block[2:]
-  for i in range(0, 3*4, 3):
-    if buf[i] in scalers:
-      blk.append(scalers[buf[i]].unscale(buf[i+1], buf[i+2]))
+  buf = block[2:] #drop the KWP op and param
+  idx = 0
+  for i in range(4):
+    if buf[idx] in scalers:
+      if scalers[buf[idx]].size <=3:
+        blk.append(scalers[buf[idx]].unscale(buf[idx+1], buf[idx+2]))
+        idx += 3
+      else:
+        blk.append(scalers[buf[idx]].unscale(buf[idx:], None))
+        idx += len(blk[-1]_
     else:
       blk.append(scalers[256].unscale(buf[i+1], buf[i+2]))
-  if mod:
+  if mod: #don't look up block labels if we just want a basic parse.
     try:
       for i in range(4):
         blk[i].label = labels[mod.pn][i]
@@ -175,6 +185,16 @@ class VWModule:
     ret = {}
     blk = self.readBlock(81)
     util.log(4,"ID structure parsing not implemented yet; raw message:",blk)
+    util.log(4,"ParseBlock output:",parseBlock(blk)
+    return NotImplemented
+
+  def readPN(self):
+    #DaimlerChrysler uses 0x86 or 0x87 to get ECU ID, 0x88 to get the (manufactured) VIN (0x90 to get the "current" VIN)
+    try:
+      kwp.request("readEcuIdentification", 0x87) #preliminary test based on DaimlerChrysler documents.
+    except kwp.KWPException:
+      pass
+    util.log(4,"ECU Identification not implemented yet; raw message:",blk)
     return NotImplemented
 
   def readManufactureInfo(self):
@@ -208,12 +228,15 @@ class VWModule:
     return dtcs
 
   def readDTC(self):
-    #TODO: VWs appear to use 1-byte group numbers, so it should only take a few minutes to enumerate all groups for a given module
-    #unfortunately, a stock car's module outfit is extremely limited without being able to re-code the gateway.
+    #Groups are based on bitmask. 0xFF00 is "all groups" 0x00-3F is powertrain, 0x40-7F is chassis, 0x80-BF is body, and 0xC0-FE is network.
+    #those are for DaimlerChrysler, but are likely standardized.
+    #Status 1 and 3 are "supported DTCs", 4 is "most recent" and 0xE0 is "256+ supported DTCs" (for DaimlerChysler); returns a 2-byte count in response (big-endian)
+    #the usual "get by status" is repeated N/256 times to get all DTCs.
+    #actual status is the highest 3 bits of the status byte, being "indicated" "active" and "stored" in that order. the next bit is "readiness"
     try: #this mimics the zurich's request pattern for DTCs by "tripped" status.
-      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02FF, group 00; seems to work on transmission
+      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02, group FF00; "All Tripped Hex DTCs"
     except kwp.KWPException:
-      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00FF, group 00; works on engine, may work on others?
+      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00, group FF00; "All Tripped J2012 format DTCs"
     dtcs = []
     count = req[1]
     if count > 0:
