@@ -5,6 +5,7 @@ import queue
 import vcds_label #VCDS label file parsing is split off.
 import util
 import label
+import time
 
 class LabelStorage:
   def __init__(self, path, tree):
@@ -102,7 +103,7 @@ def parseBlock(block, mod=None): #takes a raw KWP response.
         idx += 3
       else:
         blk.append(scalers[buf[idx]].unscale(buf[idx:], None))
-        idx += len(blk[-1]_
+        idx += len(blk[-1])
     else:
       blk.append(scalers[256].unscale(buf[i+1], buf[i+2]))
   if mod: #don't look up block labels if we just want a basic parse.
@@ -185,7 +186,7 @@ class VWModule:
     ret = {}
     blk = self.readBlock(81)
     util.log(4,"ID structure parsing not implemented yet; raw message:",blk)
-    util.log(4,"ParseBlock output:",parseBlock(blk)
+    util.log(4,"ParseBlock output:",parseBlock(blk))
     return NotImplemented
 
   def readPN(self):
@@ -326,7 +327,7 @@ if __name__ == "__main__":
     kw.begin(0x89)
     blks = {"open": {}, "locked":[]}
     codes = {"open": {}, "locked": []}
-    for i in range(1,256):
+    for i in range(128,256):
      print(i)
      try:
 #      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
@@ -336,8 +337,18 @@ if __name__ == "__main__":
       blks["locked"].append(hex(i))
      except (ValueError, kwp.ETIME, kwp.KWPException):
       pass
+     if not conn._open:
+       while True:
+        try:
+         conn = stack.connect(0x01)
+         kw = kwp.KWPSession(conn)
+         kw.begin(0x89)
+         break
+        except queue.Empty:
+         pass
      try:
-      blk = kw.request("readDataByCommonIdentifier", i)
+      blk = kw.request("readEcuIdentification", i)
+      print("Block:", blk)
       codes["open"][i] = blk
      except kwp.EPERM:
       codes["locked"].append(hex(i))
@@ -347,8 +358,10 @@ if __name__ == "__main__":
       kw.begin(0x89)
      except kwp.KWPException as e:
       print(e)
-    fd = open("blks.json", "w")
+     time.sleep(.5)
+    fd = open("ids.json", "w")
     fd.write(json.dumps(json.loads(jsonpickle.dumps({"blocks": blks, "codes": codes})), indent=4))
     fd.close()
   kw.close()
+  print("Done.")
   import sys; sys.exit(0) #need to do this because of threads.
