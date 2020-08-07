@@ -191,12 +191,21 @@ class VWModule:
 
   def readPN(self):
     #DaimlerChrysler uses 0x86 or 0x87 to get ECU ID, 0x88 to get the (manufactured) VIN (0x90 to get the "current" VIN)
-    try:
-      kwp.request("readEcuIdentification", 0x87) #preliminary test based on DaimlerChrysler documents.
-    except kwp.KWPException:
-      pass
-    util.log(4,"ECU Identification not implemented yet; raw message:",blk)
-    return NotImplemented
+    #VW uses the latter two for that as well. but on VWs, 0x86 is manufacture info, and 0x87 is firmware version (I think?)
+    req = kwp.request("readEcuIdentification", 0x91) #VW: "Read compact VAG number"
+    buf = req[2:]
+    l = buf[0]
+    pn = buf[1:l] #sometimes there are padding bytes after, so we have to drop them.
+    buf = bytearray()
+    buf += pn[0:3]
+    buf += b'-'
+    buf += pn[3:6]
+    buf += b'-'
+    buf += pn[6:9]
+    if len(buf) > 9: #suffix is optional
+      buf += b'-'
+      buf += pn[9:]
+    self.pn = bytes(buf).decode("ascii")
 
   def readManufactureInfo(self):
     ret = {}
@@ -248,7 +257,7 @@ class VWModule:
 
   def measureBlock(self, blk):
     if not self.pn:
-      self.readID()
+      self.readPN()
     return parseBlock(self.readBlock(blk), self)
   def readBlock(self, blk):
     return self.kwp.request("readDataByLocalIdentifier", blk)
@@ -295,10 +304,12 @@ class VWVehicle:
     util.log(5,"Enumerating Modules...")
     for mod in modules.keys():
       try:
-        self.stack.connect(mod).close()
-        util.log(5,"Found module:",modules[mod])
+        m = self.module(mod)
+        m.readPN()
+        util.log(5,"Found module:",modules[mod],"Part Number:",m.pn)
+        m.close()
         self.enabled.append(mod)
-      except (queue.Empty,ValueError):
+      except (queue.Empty,ValueError,kwp.KWPException):
         pass #squash the exception; just means "module not detected"
 
   def module(self, mod):
@@ -329,15 +340,7 @@ if __name__ == "__main__":
     codes = {"open": {}, "locked": []}
     for i in range(128,256):
      print(i)
-     try:
-#      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
-#      blks["open"][i] = blk
-      pass
-     except kwp.EPERM:
-      blks["locked"].append(hex(i))
-     except (ValueError, kwp.ETIME, kwp.KWPException):
-      pass
-     if not conn._open:
+     if not conn._open: #re-open dropped connections.
        while True:
         try:
          conn = stack.connect(0x01)
@@ -346,6 +349,14 @@ if __name__ == "__main__":
          break
         except queue.Empty:
          pass
+     try:
+#      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
+#      blks["open"][i] = blk
+      pass
+     except kwp.EPERM:
+      blks["locked"].append(hex(i))
+     except (ValueError, kwp.ETIME, kwp.KWPException):
+      pass
      try:
       blk = kw.request("readEcuIdentification", i)
       print("Block:", blk)
