@@ -44,7 +44,7 @@ def main(sock):
           car.enum()
           print("Modules Available:")
           for mod in car.enabled:
-            print(" ",vw.modules[mod])
+            print(" " + car.parts[mod]) #pre-formatted string.
         elif op == 1: #Connect to Module
           if not car.scanned:
             print("Enumerating modules, please wait")
