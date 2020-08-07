@@ -18,7 +18,7 @@ def sleep(sl):
   _sleep(sl)
 
 if DEBUG:
-  time.sleep = sleep #crude debug hook.
+  time.sleep = sleep #crude debug hook for debugging timeouts
 
 
 _threadrun = True
@@ -32,16 +32,20 @@ def recvthread(stack):
       stack._recv(msg)
 
 def pingthread(conn):
-  while conn._open:
+  while conn._open or conn.reconnect: #keep the thread spinning while reconnecting
     time.sleep(.5)
     if conn._open:
       util.log(6,"Ping!")
-      conn._send([0xa3])
+      conn._send([0xa3]) #but don't actually *send* anything.
 
 #note: the VWTP stack itself handles the sockets.
 #connections should *never* be instantiated directly!
+#thread-safety: partial. used to terminate connection cleanly from other thread.
+#only one sending thread permitted at a time, and `_send` can *never* be called
+#with a running instance of `send`, unless it's a disconnect or a ping. (opcode-distinct from data frames)
 class VWTPConnection:
-  def __init__(self,stack,chan_id,callback=None):
+  def __init__(self,stack,chan_id,callback=None,reopen=True):
+    self.mod_id = 0 #not set; is set externally.
     self.keepalive = 1 #number of seconds between pings.
     self.framebuf = None
     self.buffer = queue.Queue()
@@ -57,9 +61,11 @@ class VWTPConnection:
     self._open = False
     self.q = queue.Queue() #used for "await" by the channel setup.
     self.pinger = threading.Thread(target=pingthread, args=(self,))
+    self.reopen = reopen #attempt to automatically re-open a connection (to avoid the car saying "fuck off" while brute-forcing block IDs...)
+    self.lock = theading.Lock() #used to suspend sending through disconnects
+    self.connected = True
 
   def open(self):
-    global DEBUG
     self._open = True
     util.log(5,"Beginning channel parameter setup")
     #called when the channel is set up to recieve frames at the designated ID, to start channel setup.
@@ -81,8 +87,15 @@ class VWTPConnection:
         self._send(buf)
     if not self.blksize:
       raise ValueError("Channel setup timeout")
-    self.pinger.start()
+    if self.connected: #use this to determine "new" open vs "old" open; this is set to True by the constructor, which is not re-called on reconnect.
+      self.pinger.start() #only start the thread if it's not already running.
+    self.connected = True
     self.tx=self._tx
+
+  def reopen(self):
+    util.log(5,"Re-opening connection to:",hex(self.mod_id))
+    self.stack.reconnect(self)
+    self.open() #outermost lock doesn't affect this, since it uses primitives directly
 
   def _recv(self, msg):
     global DEBUG
@@ -91,7 +104,13 @@ class VWTPConnection:
     op = buf[0]
     buf = buf[1:]
     if op == 0xA8: #disconnect
-      self.close()
+      if self.reopen:
+        self.connected = False #asyncronously signal this to main thread.
+      with self.lock: #finish the current outgoing block, then cut it short.
+        if self._open:
+          self._send([0xa8]) #respond if this was remote-initiated.
+        self.sending = False
+        self.close()
     elif op == 0xA3: #"ping"
       pass #FIXME: send parameter response method
     elif op  == 0xA1: #params response
@@ -186,6 +205,8 @@ class VWTPConnection:
 
   #note: these send *VWTP frames*! they are *arbitrary bytes-like buffers*
   def send(self, msg): #this is the *only* code that should be called by user programs.
+    if not self.connected: #blocking reconnect triggered in recv thread is a *bad* idea. deadlocks abound. do it here.
+      self.reopen()
     mv = msg
     mv = struct.pack(">H",len(mv)) + mv #prepend the length field to the buffer before splitting it apart.
     buf = []
@@ -197,12 +218,16 @@ class VWTPConnection:
     for blk in blocks:
       retry = 10
       sent = False
-      while not sent: #repeat blocks that time out
+      while not sent and self.sending: #repeat blocks that time out
+       with self.lock: #avoid "sliced" blocks if a reconnect occurs in the middle. finish flushing the block and bail first.
         sent = self._sendblk(blk)
         retry -= 1
         if retry == 0: #not an assert, otherwise "optimized" use would spinlock by infinitely trying to send.
           raise ValueError("Retry limit exceeded, aborting!") #FIXME: correct error code.
-
+      if not self.sending:
+        util.log(5,"Send cut short by reconnect.")
+        raise ValueError("Send cut short by reconnect.")
+    self.sending = False
 
 
   def read(self,timeout=None): #note: this is *ONLY VALID* if there's no callback registered.
@@ -211,10 +236,12 @@ class VWTPConnection:
   def close(self):
     if self._open: #don't close the socket twice.
       self._open = False
-      self.stack.disconnect(self) #call back to our stack manager for cleanup
-      self.pinger.join() #and wait for our pinger to die.
+      if not reconnect:
+        self.stack.disconnect(self) #call back to our stack manager for cleanup
+        self.pinger.join() #and wait for our pinger to die (if it should...)
 
   def __exit__(self, type, value, traceback):
+    self.reconnect = False #clean disconnect, don't reconnect.
     self.close()
     if value:
       return False #our sole purpose here is to close the connection on the ECU side.
@@ -267,14 +294,14 @@ class VWTPStack:
     global DEBUG
     with self.buflock:
       if msg.arbitration_id in self.connections:
-        util.log(5,"Got VWTP subframe:",msg)
+        util.log(6,"Got VWTP subframe:",msg)
         self.connections[msg.arbitration_id]._recv(msg.data) #note: _recv is for CAN frame data, recv is called when a *VWTP* frame is constructed.
       elif msg.arbitration_id in self.framebuf:
         util.log(5,"Got link control frame:",msg)
         self.framebuf[msg.arbitration_id].put(msg.data)
 
   def send(self,msg):
-    util.log(5,"Sending frame:",msg)
+    util.log(6,"Sending frame:",msg)
     self.socket.send(msg)
 
   def connect(self,dest,callback=None,proto=1): #note: the *logical* destination, also known as the unit identifier
@@ -304,11 +331,34 @@ class VWTPStack:
     assert blob[5] & 0x10 == 0, "ECU gave us an invalid TX address?" #shouldn't happen, but trap it if it does.
     tx = (blob[5] * 256) + blob[4]
     conn = VWTPConnection(self,tx,callback) #tx is usually 0x740.
+    conn.mod_id = dest
     self.connections[0x300] = conn #FIXME: multiple connections at once
     util.log(5,"Connected")
     conn.open()
     return conn
 
+  def reconnect(self, conn, proto=1):
+    dest = conn.mod_id
+    util.log(5,"Re-connecting to ECU:",hex(dest))
+    self._register(0x200 + dest) #register the response address so we don't drop frames...
+    frame = [None] * 7
+    frame[0] = dest
+    frame[1] = 0xC0 #setup request
+    frame[2] = 0
+    frame[3] = 0x10 #high nibble of high byte set to invalid
+    frame[4] = 0
+    frame[5] = 0x03 #0x300-310 are the usually seen ones
+    frame[6] = proto #default is KWP transport
+    msg = can.Message(arbitration_id=0x200, data=frame, is_extended_id=False)
+    self.send(msg)
+    msg = self.framebuf[0x200+dest].get(timeout = .1) #100ms timeout for connect interrogation.
+    self._unregister(0x200 + dest)
+    blob = msg
+    assert blob[5] & 0x10 == 0, "ECU gave us an invalid TX address?" #shouldn't happen, but trap it if it does.
+    tx = (blob[5] * 256) + blob[4]
+    conn.tx = tx #give it the new TX address.
+    util.log(5,"Reconnected")
+    
   def disconnect(self,con):
     con._send([0xA8])
     for k,v in self.connections.items():
