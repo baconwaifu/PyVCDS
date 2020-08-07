@@ -9,7 +9,7 @@ def mod_menu(car):
   mod = car.module(int(mod))
   with mod as m:
     while True:
-      op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Back"])
+      op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Load Labels for Module", "Back"])
       if op == 0:
         print(m.readID())
       if op == 1:
@@ -23,6 +23,15 @@ def mod_menu(car):
       if op == 5:
         pass
       if op == 6:
+        if not m.pn:
+          m.readID()
+        path = input("Enter label directory path:\n> ")
+        vw.labels.setpath(path)
+        if m.pn in vw.labels:
+          print("Loaded")
+        else:
+          print("Error loading labels")
+      if op == 7:
         break
 
 def main(sock):

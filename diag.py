@@ -22,7 +22,7 @@ def advanced():
 
 def oem(vin):
   global sock
-  if vin.startswith("WVW"): 
+  if vin[1:3] == "VW" #first digit is a country code, so drop that.
     import menu_vw
     menu_vw.main(sock)
   else:
@@ -37,6 +37,9 @@ def main():
   op = menu.selector(opt)
   if op == 0:
     print(vin)
+    print("'Anonymized' VIN:")
+    print(vin[:11] + "000000") #drops the serial number
+    print("NOTE: this still identifies the exact *model* of car, just not the exact *car*")
   elif op == 1:
     oem(vin)
   elif op == 2:
@@ -74,6 +77,9 @@ with obd2.OBD2Interface(sock) as obd: #get the VIN using OBD2.
 
 if args.vin:
   print(vin)
+  print("'Anonymized' VIN:")
+  print(vin[:11] + "000000") #drops the serial number
+  print("NOTE: this still identifies the exact *model* of car, just not the exact *car*")
   sys.exit(0)
 
 while True:

@@ -90,7 +90,6 @@ def loadLabel(pn, fname):
   return labels
 
 def loadNewLabel(pn, fname): #"New" ross-tech labels, uses the newer redirect method
-  raise NotImplementedError("New-style labels are unsupported")
   suffix = pn.split("-")[-1]
   labels = {}
   with open(fname, "r") as fd:
@@ -117,7 +116,7 @@ def loadNewLabel(pn, fname): #"New" ross-tech labels, uses the newer redirect me
     return None
   return labels
 
-def getPath(pn, addr, basedir="./Labels"):
+def getPath(pn, addr, basedir=BASEDIR):
     path = os.path.join(basedir,"TEST-"+hex(self.idx)[2:]+".LBL") #TEST-AA.LBL
     if os.path.exists(path):
       return loadLabel(pn, path)
