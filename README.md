@@ -36,6 +36,9 @@ the officially tested adapter hardware is a [CANdleLight](https://github.com/Hub
 * UDF (does VW even use this? or is it all KWP?)
 * "Long Codes" (Likely just KWP data blocks; just need a trace of the service being called from someone who has a hexcan and CAN sniffer)
 * Better error handling (at least it now cleanly disconnects when an exception is thrown...)
+* Session hijacking using an external scan tool. KWP has no protections against MITM.
+* "Store and Forward" tracer. can be used to implement the above. note: this will *NEVER* support OBD2 due to potential misuse!
+* Contributions to vag-diag-sim to support more KWP functions and crash less
 
 ## Testing
 In order to test the features of the software without needing to have a car hooked up, a socketCAN equiped ECU simulator can be used.
