@@ -212,27 +212,27 @@ class KWPSession:
   def recv(self,timeout=None):
     return self.transport.read(timeout) #the queue-based implementation is a blocking call if the queue is empty.
 
-  def check(self, resp, val):
+  def check(self, resp, val): #format: 0x7F, [service], [code]; or [service + 0x40]
     global responses
     if resp[0] == 0x7F:
       util.log(5,"Got Negative response:",resp)
-      if resp[1] == 0x21 or resp[1] == 0x23: #repeat the request; either busy or "not done yet"
+      if resp[2] == 0x21 or resp[2] == 0x23: #repeat the request; either busy or "not done yet"
         raise EAGAIN
-      elif resp[1] == 0x78: #"Response Pending"
+      elif resp[2] == 0x78: #"Response Pending"
         raise EWAIT
-      elif resp[1] == 0x33:
+      elif resp[2] == 0x33:
         raise EPERM #TODO: add authentication support, and check that.
-      elif resp[1] == 0x31:
+      elif resp[2] == 0x31:
         raise ENOENT
-      elif resp[1] == 0x35:
+      elif resp[2] == 0x35:
         raise EAUTH
-      elif resp[1] == 0x12:
+      elif resp[2] == 0x12:
         raise EINVAL
-      msg = "<Unknown response {}>".format(hex(resp[1]))
-      if resp[1] in responses:
-        msg = responses[resp[1]] #give us the error's name.
-      elif resp[1] in self.mfrresp:
-        msg = self.mfrresp[resp[1]] #manufacturer-specific error
+      msg = "<Unknown response {}>".format(hex(resp[2]))
+      if resp[2] in responses:
+        msg = responses[resp[2]] #give us the error's name.
+      elif resp[2] in self.mfrresp:
+        msg = self.mfrresp[resp[2]] #manufacturer-specific error
       raise KWPException(msg)
 
     elif resp[0] == val:
