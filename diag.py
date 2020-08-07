@@ -21,8 +21,7 @@ def advanced():
   pass
 
 def oem(vin):
-  global sock
-  if vin[1:3] == "VW" #first digit is a country code, so drop that.
+  if vin[1:3] == "VW": #first digit is a country code, so drop that.
     import menu_vw
     menu_vw.main(sock)
   else:
@@ -72,8 +71,10 @@ if args.bits:
 
 sock = can.interface.Bus(channel=bus, bustype='socketcan')
 
-with obd2.OBD2Interface(sock) as obd: #get the VIN using OBD2.
-  vin = obd.readVIN()
+#with obd2.OBD2Interface(sock) as obd: #get the VIN using OBD2.
+#  vin = obd.readVIN()
+
+vin = "WVW"
 
 if args.vin:
   print(vin)
