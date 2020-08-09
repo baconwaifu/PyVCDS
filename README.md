@@ -47,11 +47,38 @@ The one used for working the initial kinks out of the VWTP stack is vag-diag-sim
 Unfortunately, the basic simulator used for initial testing is not advanced enough for testing much of anything aside from the basic measurement blocks and communication protocols (and the "ECU ID" request)  
 It *is* a more sophisticated integration test, however. it can be configured to spit arbitrary data back at the tester in response to a query. allows testing code for crashes with "known good" responses from the ECU.
 
+## Getting Started
+Getting started with this toolkit simply involves running `diag.py` in a terminal.
+
+The basic menu supports CAN/OBD-2 commands, such as retrieving the VIN or powertrain/emmisions DTCs (Not yet...)
+
+The "OEM Enhanced" menu utilizes the VIN gathered over OBD-2 to determine the appropriate protocol and menu to use.  
+For Volkswagen, this is VWTP/KWP. It's a fairly standard implementation of KWP2000 over CAN, just using
+a proprietary transport protocol instead of ISO-TP. VW seems to use "Blocks" for everything, which are simply
+local data identifiers.  
+Once in the OEM enhanced menu, the option to "Enumerate Modules" is shown; this attempts to connect to every known module in-turn
+in a similar manner to VCDS's "Auto-Scan" (but without recording anything other than the part number yet)  
+Any operation involving a module, must first enumerate available modules. the list is cached while connected to the vehicle.  
+Currently, you can get active DTCs (incomplete; can split DTCs, but dumps raw hex), load VCDS-compatible labels, and read known blocks (Not yet)
+
+## Running Traces
+The easiest way to implement some features is to take a "trace" of another scan tool, such as a hex-can.  
+This program facilitates that with `tracer.py` or `candump` and can be used with an obd-2 splitter.  
+Plug both adapters into the splitter, start `tracer.py` or `candump` (preferred) and start VCDS
+and do the desired operation. take screenshots of each step, to add context to the trace.
+
+NOTE: usage in a VM is *UNTESTED*, but as long as USB passthrough works, and using a new enough `gs_usb` device,
+it should work fine.  
+when using on the same machine as VCDS, run this in a VM, as hex-can stuff may not like being in a VM
+
 ## Contributing
+* Contributors with a HEX-CAN scan tool are appreciated.
+    * Use `tracer.py` or `candump` with an OBD-2 splitter, and attach the output (and relevant VCDS screenshots) to a github issue.
+    * When using a VM, use a linux VM on windows using a `gs_usb` adapter (such as the CANdleLight project)
 * Contributions of labels must be for labels that are *not present* in Ross-tech's database.
-* Violations of this rule may lead to being **permanently banned** from further contribution.
+    * Violations of this rule may lead to being **permanently banned** from further contribution.
 * All support requests must include:
-** *exact* part number
-** anonymized VIN (get from diag.py)
-** The address of the module in question
-** the block, DTC, or routine in question.
+    * *exact* part number
+    * anonymized VIN (get from diag.py)
+    * The address of the module in question
+    * the block, DTC, or routine in question.
