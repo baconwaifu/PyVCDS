@@ -99,7 +99,6 @@ services = {
 }
 }
 
-recv = True
 def recvthread(socket, stack):
   while stack.open:
     msg = socket.recv(.05)
