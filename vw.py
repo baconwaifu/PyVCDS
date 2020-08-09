@@ -294,6 +294,7 @@ class VWVehicle:
   def __init__(self, stack):
     self.stack = stack;
     self.enabled = []
+    self.parts = {}
     self.scanned = False
 
   def enum(self): #a crude enumeration primitive of all *known* ECUs
@@ -309,6 +310,7 @@ class VWVehicle:
         util.log(5,"Found module:",modules[mod],"Part Number:",m.pn)
         m.close()
         self.enabled.append(mod)
+        self.parts[mod] = modules[mod] + " -> " + m.pn
       except (queue.Empty,ValueError,kwp.KWPException):
         pass #squash the exception; just means "module not detected"
 
