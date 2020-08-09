@@ -322,6 +322,36 @@ class VWVehicle:
   def __exit__(self,a,b,c):
     pass #we don't do any direct cleanup
 
+def brutemap(stack, ecu, req):
+  conn = stack.connect(ecu)
+  conn.reopen = False #we do that ourselves.
+  kw = kwp.KWPSession(conn)
+  with conn:
+    kw.begin(0x89)
+    blks = {"open": {}, "locked":[]}
+    codes = {"open": {}, "locked": []}
+    for i in range(1,256):
+     print(i)
+     if not conn._open: #re-open dropped connections.
+       while True:
+        try:
+         conn = stack.connect(ecu)
+         conn.reopen = False
+         kw = kwp.KWPSession(conn)
+         kw.begin(0x89)
+         break
+        except queue.Empty:
+         pass
+     try:
+      blk = parseBlock(kw.request(req, i))
+      blks["open"][i] = blk
+      pass
+     except kwp.EPERM:
+      blks["locked"].append(hex(i))
+     except (ValueError, kwp.ETIME, kwp.KWPException):
+      pass
+     time.sleep(.1)
+
 if __name__ == "__main__":
   import json,jsonpickle
   sock = can.interface.Bus(channel='can0', bustype='socketcan')
@@ -334,47 +364,12 @@ if __name__ == "__main__":
   for k in car.enabled:
     print(" ",modules[k])
 
-  conn = stack.connect(0x01)
-  kw = kwp.KWPSession(conn)
-  with conn:
-    kw.begin(0x89)
-    blks = {"open": {}, "locked":[]}
-    codes = {"open": {}, "locked": []}
-    for i in range(128,256):
-     print(i)
-     if not conn._open: #re-open dropped connections.
-       while True:
-        try:
-         conn = stack.connect(0x01)
-         kw = kwp.KWPSession(conn)
-         kw.begin(0x89)
-         break
-        except queue.Empty:
-         pass
-     try:
-#      blk = parseBlock(kw.request("readDataByLocalIdentifier", i))
-#      blks["open"][i] = blk
-      pass
-     except kwp.EPERM:
-      blks["locked"].append(hex(i))
-     except (ValueError, kwp.ETIME, kwp.KWPException):
-      pass
-     try:
-      blk = kw.request("readEcuIdentification", i)
-      print("Block:", blk)
-      codes["open"][i] = blk
-     except kwp.EPERM:
-      codes["locked"].append(hex(i))
-     except ValueError:
-      conn = stack.connect(0x01)
-      kw = kwp.KWPSession(conn)
-      kw.begin(0x89)
-     except kwp.KWPException as e:
-      print(e)
-     time.sleep(.5)
-    fd = open("ids.json", "w")
-    fd.write(json.dumps(json.loads(jsonpickle.dumps({"blocks": blks, "codes": codes})), indent=4))
-    fd.close()
+  m = { "readDataByLocalIdentifer": None, "readEcuIdentification": None}
+  for k in m.keys():
+    m[k] = brutemap(stack, 1, k)
+  fd = open("map-{}.json".format("01"), "w")
+  fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4))
+  fd.close()
   kw.close()
   print("Done.")
   import sys; sys.exit(0) #need to do this because of threads.
