@@ -32,7 +32,7 @@ def recvthread(stack):
       stack._recv(msg)
 
 def pingthread(conn):
-  while conn._open or conn.reconnect: #keep the thread spinning while reconnecting
+  while conn._open or conn.reopen: #keep the thread spinning while reconnecting
     time.sleep(.5)
     if conn._open:
       util.log(6,"Ping!")
@@ -62,8 +62,9 @@ class VWTPConnection:
     self.q = queue.Queue() #used for "await" by the channel setup.
     self.pinger = threading.Thread(target=pingthread, args=(self,))
     self.reopen = reopen #attempt to automatically re-open a connection (to avoid the car saying "fuck off" while brute-forcing block IDs...)
-    self.lock = theading.Lock() #used to suspend sending through disconnects
+    self.lock = threading.Lock() #used to suspend sending through disconnects
     self.connected = True
+    self.sending = False
 
   def open(self):
     self._open = True
@@ -133,7 +134,10 @@ class VWTPConnection:
     else: #assume it's a data packet.
       seq = op & 0x0f
       if op & 0x20 == 0 and seq == self.seq: #expecting ACK
-        self._ack(seq + 1) #expecting seq + 1 response
+        try:
+          self._ack(seq + 1) #expecting seq + 1 response
+        except ValueError:
+          pass #connection closed; just drop it so we don't crash the thread.
       self.seq += 1
       if self.seq == 0x10:
         self.seq = 0
@@ -146,6 +150,7 @@ class VWTPConnection:
       if op & 0x10 == 0x10:
         if self.framelen != len(self.framebuf):
           util.log(3,"Frame length mismatch! expected {}, got {}. Attempting to continue...".format(self.framelen, len(self.framebuf)))
+          util.log(4,"Problematic Frame data:",struct.pack("<H",self.framelen) + self.framebuf)
         self.recv(bytes(self.framebuf))
         self.framebuf = None
 
@@ -207,6 +212,7 @@ class VWTPConnection:
   def send(self, msg): #this is the *only* code that should be called by user programs.
     if not self.connected: #blocking reconnect triggered in recv thread is a *bad* idea. deadlocks abound. do it here.
       self.reopen()
+    self.sending = True
     mv = msg
     mv = struct.pack(">H",len(mv)) + mv #prepend the length field to the buffer before splitting it apart.
     buf = []
@@ -236,7 +242,7 @@ class VWTPConnection:
   def close(self):
     if self._open: #don't close the socket twice.
       self._open = False
-      if not reconnect:
+      if not self.reopen:
         self.stack.disconnect(self) #call back to our stack manager for cleanup
         self.pinger.join() #and wait for our pinger to die (if it should...)
 
