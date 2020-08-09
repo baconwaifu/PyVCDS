@@ -21,12 +21,18 @@ def advanced():
   pass
 
 def oem(vin):
+  global sock
   if vin[1:3] == "VW": #first digit is a country code, so drop that.
     import menu_vw
     menu_vw.main(sock)
+  elif vin[1] == "V": #Volvo; here because the condition is a superset of "VW"
+    print("Volvo vehicles are not yet supported.")
+    print("If you have a Volvo diagnostics adapter and wish to contribute,")
+    print("Contact the maintainer with a CAN trace.")
+    return
   else:
     print("Un-implemented OEM for VIN '{}'".format(vin))
-    return    
+    return
 
 def main():
   global obd
@@ -71,10 +77,8 @@ if args.bits:
 
 sock = can.interface.Bus(channel=bus, bustype='socketcan')
 
-#with obd2.OBD2Interface(sock) as obd: #get the VIN using OBD2.
-#  vin = obd.readVIN()
-
-vin = "WVW"
+with obd2.OBD2Interface(sock) as obd: #get the VIN using OBD2.
+  vin = obd.readVIN()
 
 if args.vin:
   print(vin)
