@@ -38,7 +38,7 @@ def main():
   global obd
   global vin
   opt = [ "Display VIN", "OEM Extended Diagnostics", "Inspection Readyness", "Display DTCs", "Advanced/Debugging", "Exit" ]
-  print("PyVCDS")
+  print("PyVCDS. VIN: {}".format(vin))
   op = menu.selector(opt)
   if op == 0:
     print(vin)

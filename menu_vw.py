@@ -11,7 +11,10 @@ def mod_menu(car):
     while True:
       op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Load Labels for Module", "Back"])
       if op == 0:
-        print(m.readID())
+        try:
+          print(m.readID())
+        except kwp.ENOENT:
+          print("Module ID measuring block not supported")
       if op == 1:
         print(m.readManufactureInfo())
       if op == 2:
@@ -24,7 +27,7 @@ def mod_menu(car):
         pass
       if op == 6:
         if not m.pn:
-          m.readID()
+          m.readPN()
         path = input("Enter label directory path:\n> ")
         vw.labels.setpath(path)
         if m.pn in vw.labels:
