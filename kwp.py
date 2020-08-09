@@ -112,6 +112,10 @@ params = {
 class KWPException(Exception):
   pass
 
+#Service Not Supported; invalid request type.
+class serviceNotSupportedException(KWPException):
+  pass
+
 #repeat the question.
 class EAGAIN(KWPException):
   pass
@@ -152,7 +156,7 @@ def timeout(sess, timeout):
     if sess.transport._open: #implemenation detail; TODO: change that.
       try:
         sess.request("testerPresent")
-      except (ValueError, ETIME):
+      except (ValueError, ETIME, serviceNotSupportedException): #also catch "Service Not Supported" and bail.
         return #catch the "tried to send to closed connection" message and kill the thread cleanly.
     else:
       return
