@@ -214,7 +214,7 @@ class OBD2Interface:
     for k,b in self.buffers.items():
       util.log(5,"Checking ECU {}...".format(k))
       resp = self._get(b)
-      util.log(5,"Checked")
+      util.log(5,"Checked, len:",len(resp) if resp else None)
       if resp:
         ret[k] = resp
     if len(ret) == 0:
@@ -223,6 +223,8 @@ class OBD2Interface:
 
   def readVIN(self):
     resp = self.readPID(9,2) #Service 9, PID 2 "Read VIN"
+    util.log(5,"Responses: ",resp)
+    resp = resp[2024] #1st ECU, usually the one with the VIN.
     assert resp[0] == 0x49, "wrong response?"
     assert resp[1] == 0x2, "not the VIN."
     return resp[3:].decode("ASCII") #trust that the first one is correct...
