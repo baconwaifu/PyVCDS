@@ -192,7 +192,7 @@ class VWModule:
   def readPN(self):
     #DaimlerChrysler uses 0x86 or 0x87 to get ECU ID, 0x88 to get the (manufactured) VIN (0x90 to get the "current" VIN)
     #VW uses the latter two for that as well. but on VWs, 0x86 is manufacture info, and 0x87 is firmware version (I think?)
-    req = kwp.request("readEcuIdentification", 0x91) #VW: "Read compact VAG number"
+    req = self.kwp.request("readEcuIdentification", 0x91) #VW: "Read compact VAG number"
     buf = req[2:]
     l = buf[0]
     pn = buf[1:l] #sometimes there are padding bytes after, so we have to drop them.
@@ -284,7 +284,8 @@ class VWModule:
       print("Aborted.")
       return
 
-
+  def close(self):
+    pass #no-op; let the context manager handle it for us
   def __enter__(self): #nothing to do outside of __init__, but we need it here anyways.
     return self
   def __exit__(self,a,b,c):
@@ -305,6 +306,7 @@ class VWVehicle:
     util.log(5,"Enumerating Modules...")
     for mod in modules.keys():
       try:
+        util.log(5,"Trying Module:",modules[mod])
         m = self.module(mod)
         m.readPN()
         util.log(5,"Found module:",modules[mod],"Part Number:",m.pn)
@@ -313,6 +315,7 @@ class VWVehicle:
         self.parts[mod] = modules[mod] + " -> " + m.pn
       except (queue.Empty,ValueError,kwp.KWPException):
         pass #squash the exception; just means "module not detected"
+      time.sleep(.2)
 
   def module(self, mod):
     return VWModule(kwp.KWPSession(self.stack.connect(mod)), mod)
@@ -323,13 +326,17 @@ class VWVehicle:
     pass #we don't do any direct cleanup
 
 def brutemap(stack, ecu, req):
-  conn = stack.connect(ecu)
+  while True: #simply spinlock waiting for ECU to connect
+    try:
+      conn = stack.connect(ecu)
+      break
+    except (queue.Empty, ValueError):
+      pass
   conn.reopen = False #we do that ourselves.
   kw = kwp.KWPSession(conn)
-  with conn:
+  with conn, kw:
     kw.begin(0x89)
     blks = {"open": {}, "locked":[]}
-    codes = {"open": {}, "locked": []}
     for i in range(1,256):
      print(i)
      if not conn._open: #re-open dropped connections.
@@ -343,7 +350,7 @@ def brutemap(stack, ecu, req):
         except queue.Empty:
          pass
      try:
-      blk = parseBlock(kw.request(req, i))
+      blk = kw.request(req, i)
       blks["open"][i] = blk
       pass
      except kwp.EPERM:
@@ -351,6 +358,7 @@ def brutemap(stack, ecu, req):
      except (ValueError, kwp.ETIME, kwp.KWPException):
       pass
      time.sleep(.1)
+    return blks
 
 if __name__ == "__main__":
   import json,jsonpickle
@@ -364,12 +372,11 @@ if __name__ == "__main__":
   for k in car.enabled:
     print(" ",modules[k])
 
-  m = { "readDataByLocalIdentifer": None, "readEcuIdentification": None}
+  m = { "readDataByLocalIdentifier": None, "readEcuIdentification": None}
   for k in m.keys():
-    m[k] = brutemap(stack, 1, k)
-  fd = open("map-{}.json".format("01"), "w")
+    m[k] = brutemap(stack, 31, k)
+  fd = open("map-{}.json".format(hex(31)[2:]), "w")
   fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4))
   fd.close()
-  kw.close()
   print("Done.")
   import sys; sys.exit(0) #need to do this because of threads.
