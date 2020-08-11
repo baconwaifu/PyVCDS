@@ -390,6 +390,7 @@ def modmap(car):
       util.log(3,"Module Read Error: {}: {}".format(hex(i)[2:],e))
     except (ValueError, queue.Empty): #fault connecting to module
       util.log(6,"Module connect timeout:",hex(i)[2:])
+    time.sleep(.1) #give the gateway time to reset between timeouts
 
 if __name__ == "__main__":
   import json,jsonpickle
@@ -410,8 +411,8 @@ if __name__ == "__main__":
 
   m = { "readDataByLocalIdentifier": range(1,256), "readEcuIdentification": range(1,256), "readDataByCommonIdentifier": range(1,65535) }
   for k in m.keys():
-    m[k] = brutemap(stack, 31, k, m[k])
-  fd = open("map-{}.json".format(hex(31)[2:]), "w")
+    m[k] = brutemap(stack, 3, k, m[k])
+  fd = open("map-{}.json".format(hex(3)[2:]), "w")
   fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4)) #jsonpickle allows serializing every type, but no pretty-printing. so we re-load it and re-dump it.
   fd.close()
   print("Done.")
