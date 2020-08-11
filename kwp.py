@@ -7,7 +7,7 @@ import util
 
 #methods are stateless; used for metadata storage only.
 class KWPRequest:
-  def __init__(self, num, fmt=""):
+  def __init__(self, num, fmt="s"):
     self.num = num
     self.fmt = fmt
     self.b = bytes([num]) #performance improvement; only need to do this once.
@@ -25,10 +25,24 @@ class KWPRequest:
 #KWP addressing-modes are not relevant to VW vehicles using VWTP, as all
 #ECU addressing is handled by VWTP.
 
+
 #a lookup table of all standard KWP2000 request codes by name as per ISO 14230-3:1996
 #(if someone could get me the :1999 edition that would be great...)
 #an additional set of tables is used for manufacturer-specific services between 0xA0->0xBF.
 #the response is the same number with bit 0x40 ("bit 6" in the standard) set.
+
+#gathered from a translated chinese blog post; some fields are quite badly translated...
+#the first 9 services on a real K-line (0x1 -> 0x9) are OBD2 defined as follows:
+#0x1: Powertrain Diagnostics
+#0x2: Powertrain freeze-frame
+#0x3: Emissions Diagnostics
+#0x4: Clear Emissions DTCs
+#0x9: Vehicle Information (VIN number, mainly...)
+#Optional services:
+#0x5: Oxygen sensor test results
+#0x6: Other monitor test results (parameters? only have a bad translation)
+#0x7: Emissions DTCs during most recent driving cycle
+#0x8: Control onboard component (what?)
 requests = {
 "startDiagnosticSession": KWPRequest(0x10, "B"),
 "ecuReset": KWPRequest(0x11),
@@ -41,7 +55,7 @@ requests = {
 "readEcuIdentification": KWPRequest(0x1A, "B"), #0x91, 9A, 9B params for VWs?
 "stopDiagnosticSession": KWPRequest(0x20),
 "readDataByLocalIdentifier": KWPRequest(0x21, "B"),
-"readDataByCommonIdentifier": KWPRequest(0x22, "<H"),
+"readDataByCommonIdentifier": KWPRequest(0x22, ">H"),
 "readMemoryByAddress": KWPRequest(0x23),
 "UDSReadScalingDataByIdentifier": KWPRequest(0x24),
 "setDataRates": KWPRequest(0x26),
@@ -102,6 +116,7 @@ responses = {
 0x77: "blockTransferDataChecksumError",
 0x78: "reqCorrectlyRcvd-RspPending", #requestCorrectlyRecieved-ResponsePending ("Could not respond within required timing, please wait")
 0x79: "incorrectByteCountDuringBlockTransfer"
+0x80: "serviceNotSupportedInActiveDiagnosticMode" #Service *supported*, but not in the current mode.
 }
 
 params = {
