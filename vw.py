@@ -179,7 +179,13 @@ class VWModule:
     self.idx = mod
     self.name = modules[mod]
     self.pn = None
+    self.name = None
     self.kwp = kwp
+
+  def __str__(self):
+    if not self.pn:
+      self.readPN()
+    return "{}: \"{}\"".format(self.pn,self.name)
 
   def readID(self):
     self.pn = True
@@ -192,11 +198,20 @@ class VWModule:
   def readPN(self):
     #DaimlerChrysler uses 0x86 or 0x87 to get ECU ID, 0x88 to get the (manufactured) VIN (0x90 to get the "current" VIN)
     #VW uses the latter two for that as well. but on VWs, 0x86 is manufacture info, and 0x87 is firmware version (I think?)
-    req = self.kwp.request("readEcuIdentification", 0x91) #VW: "Read compact VAG number"
-    buf = req[2:]
-    l = buf[0]
-    pn = buf[1:l] #sometimes there are padding bytes after, so we have to drop them.
-    buf = bytearray()
+    #We first try to retrieve the full identification
+    try:
+      util.log(6,"Reading ECU identification...")
+      req = self.kwp.request("readEcuIdentification", 0x9B) #Read Part Identification
+      pn = req[2:14]
+      self.name = req[0x1c:].decode("ascii").rstrip()
+    except kwp.KWPException:
+      util.log(5,"Fault retrieving full ID block, falling back to plain part number!")
+      req = self.kwp.request("readEcuIdentification", 0x91) #Read raw VAG number
+      l = req[2]
+      pn = req[3:2+l] #length byte includes itself...
+      self.name = "<Unknown, could not retreive name>"
+
+    buf = bytearray() #expanding the part number is the same for both paths.
     buf += pn[0:3]
     buf += b'-'
     buf += pn[3:6]
@@ -205,7 +220,7 @@ class VWModule:
     if len(buf) > 9: #suffix is optional
       buf += b'-'
       buf += pn[9:]
-    self.pn = bytes(buf).decode("ascii")
+    self.pn = bytes(buf).decode("ascii").strip() #full ID block's PN has trailing spaces, so drop those.
 
   def readManufactureInfo(self):
     ret = {}
@@ -325,7 +340,7 @@ class VWVehicle:
   def __exit__(self,a,b,c):
     pass #we don't do any direct cleanup
 
-def brutemap(stack, ecu, req):
+def brutemap(stack, ecu, req, r):
   while True: #simply spinlock waiting for ECU to connect
     try:
       conn = stack.connect(ecu)
@@ -337,7 +352,7 @@ def brutemap(stack, ecu, req):
   with conn, kw:
     kw.begin(0x89)
     blks = {"open": {}, "locked":[]}
-    for i in range(1,256):
+    for i in r:
      print(i)
      if not conn._open: #re-open dropped connections.
        while True:
@@ -355,10 +370,26 @@ def brutemap(stack, ecu, req):
       pass
      except kwp.EPERM:
       blks["locked"].append(hex(i))
-     except (ValueError, kwp.ETIME, kwp.KWPException):
-      pass
+     except (ValueError, kwp.ETIME, kwp.KWPException) as e:
+      util.log(4,e)
+      if type(e) == kwp.serviceNotSupportedException: #if the service isn't supported, don't bother mapping it. because it won't work.
+        return "serviceNotSupported" #because we just punt the output into JSON, this works fine.
      time.sleep(.1)
     return blks
+
+def modmap(car):
+  mods = {}
+  for i in range(1,256):
+    try:
+      mod = car.module(i)
+      m = str(mod)
+      a = hex(i)[2:]
+      util.log(5,"Found module '{}' at address '{}'".format(m, a))
+      mods[a] = m #get the part number and name.
+    except kwp.KWPException as e: #fault reading part number; means module is there but fucked up.
+      util.log(3,"Module Read Error: {}: {}".format(hex(i)[2:],e))
+    except (ValueError, queue.Empty): #fault connecting to module
+      util.log(6,"Module connect timeout:",hex(i)[2:])
 
 if __name__ == "__main__":
   import json,jsonpickle
@@ -372,11 +403,16 @@ if __name__ == "__main__":
   for k in car.enabled:
     print(" ",modules[k])
 
-  m = { "readDataByLocalIdentifier": None, "readEcuIdentification": None}
+  util.log(4,"Creating map of all present and enabled modules, please wait.")
+  mods = modmap(car)
+  with open("mods.json", "w") as fd:
+    fd.write(json.dumps(mods,indent=4)) #is all primitives, so jsonpickle is not needed here.
+
+  m = { "readDataByLocalIdentifier": range(1,256), "readEcuIdentification": range(1,256), "readDataByCommonIdentifier": range(1,65535) }
   for k in m.keys():
-    m[k] = brutemap(stack, 31, k)
+    m[k] = brutemap(stack, 31, k, m[k])
   fd = open("map-{}.json".format(hex(31)[2:]), "w")
-  fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4))
+  fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4)) #jsonpickle allows serializing every type, but no pretty-printing. so we re-load it and re-dump it.
   fd.close()
   print("Done.")
   import sys; sys.exit(0) #need to do this because of threads.

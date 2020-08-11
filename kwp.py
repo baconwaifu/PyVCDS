@@ -115,7 +115,7 @@ responses = {
 0x76: "illegalBlockTransferType",
 0x77: "blockTransferDataChecksumError",
 0x78: "reqCorrectlyRcvd-RspPending", #requestCorrectlyRecieved-ResponsePending ("Could not respond within required timing, please wait")
-0x79: "incorrectByteCountDuringBlockTransfer"
+0x79: "incorrectByteCountDuringBlockTransfer",
 0x80: "serviceNotSupportedInActiveDiagnosticMode" #Service *supported*, but not in the current mode.
 }
 
@@ -146,7 +146,7 @@ class ETIME(KWPException):
 class EPERM(KWPException): #permission denied
   pass
 
-class ENEEDAUTH(KWPException): #needs authentication (ie: SecurityAccessDenied but before authentication)
+class ENEEDAUTH(EPERM): #needs authentication (ie: SecurityAccessDenied but before authentication)
   pass
 
 class ENOENT(KWPException):
@@ -161,7 +161,7 @@ class EFAULT(KWPException):
 class EINVAL(KWPException):
   pass
 
-class EAUTH(KWPException):
+class EAUTH(EPERM):
   pass
 
 def timeout(sess, timeout):
