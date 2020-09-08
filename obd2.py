@@ -244,8 +244,16 @@ class OBD2Interface:
     except queue.Empty:
       return None
 
+  def close(self):
+    if self.open: #to prevent lockup or errors from this being called multiple times.
+      self.open = False
+      self.recvthread.join()
+
   def __enter__(self):
     return self
   def __exit__(self, a, b, c):
-    self.open = False
-    self.recvthread.join() #and wait for thread to die.
+    self.close()
+    
+  def __del__(self):
+    if self.open:
+      print("WARN: OBD2 instance GCed before being closed!")

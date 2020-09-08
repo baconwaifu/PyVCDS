@@ -294,6 +294,12 @@ class VWTPConnection:
   def __enter__(self): #we only use the context manager for auto-cleanup.
     return self
 
+  def __del__(self):
+    if self._open:
+      print("WARN: VWTP connection garbage-collected before being closed!")
+      self.reopen = False
+      self.pinger.join() #if we're being GCed, the stack object's already gone.
+
 class VWTPStack:
   def __init__(self,socket,sync=True):
     self.socket = socket
@@ -302,6 +308,7 @@ class VWTPStack:
     self.framebuf = {} #a sparse frame buffer based on recieved address. *must* register a dest before messages will be buffered!
     self.sync = sync
     self.open = True
+    #frame buffers and connection table modifications are behind this lock.
     self.buflock = threading.Lock()
     self.addrs = {0x300:None, 0x301:None, 0x302:None,0x303:None}
 
@@ -336,7 +343,7 @@ class VWTPStack:
 
   def _recv(self,msg):
     global DEBUG
-    with self.buflock:
+    with self.buflock: #fix a race condition when frames are duplicated, a time-of-check race.
       if msg.arbitration_id in self.connections:
         util.log(6,"Got VWTP subframe:",msg)
         self.connections[msg.arbitration_id]._recv(msg.data) #note: _recv is for CAN frame data, recv is called when a *VWTP* frame is constructed.
@@ -358,51 +365,61 @@ class VWTPStack:
     #0x4: TX ID low  #ID validity; with '0' being valid.
     #0x5: TX ID high
     #0x6: Application type, 0x01 for KWP(?)
-    self._register(0x200 + dest) #register the response address so we don't drop frames...
-    frame = [None] * 7
-    frame[0] = dest
-    frame[1] = 0xC0 #setup request
-    frame[2] = 0
-    frame[3] = 0x10 #high nibble of high byte set to invalid
-    frame[4] = 0
-    frame[5] = 0x03 #0x300-310 are the usually seen ones
-    frame[6] = proto #default is KWP transport
-    msg = can.Message(arbitration_id=0x200, data=frame, is_extended_id=False)
-    self.send(msg)
-    try:
-      msg = self.framebuf[0x200+dest].get(timeout = .3) #300ms timeout for connect interrogation.
-    except queue.Empty:
-      raise ETIME("Channel Connect timeout")
-    self._unregister(0x200 + dest)
-    blob = msg
-    assert blob[5] & 0x10 == 0, "ECU gave us an invalid TX address?" #shouldn't happen, but trap it if it does.
-    tx = (blob[5] * 256) + blob[4]
-    conn = VWTPConnection(self,tx,callback) #tx is usually 0x740.
-    conn.mod_id = dest
-    self.connections[0x300] = conn #FIXME: multiple connections at once
-    util.log(5,"Connected")
-    conn.open()
-    return conn
+    rx = None
+    self._register(0x200 + dest) #this needs to be outside the lock, because it uses it itself.
+    with self.buflock: #yes, the whole connection is inside the lock; mostly for concurrency issues.
+      for addr in range(0x300, 0x310):
+        if not addr in self.connections:
+          rx = addr
+      if not rx:
+        raise VWTPException("Unable to allocate RX channel")
+      #self._register(0x200 + dest) #register the response address so we don't drop frames...
+      frame = [None] * 7
+      frame[0] = dest
+      frame[1] = 0xC0 #setup request
+      frame[2] = 0
+      frame[3] = 0x10 #high nibble of high byte set to invalid
+      frame[4] = rx & 255 #low byte of address
+      frame[5] = (rx / 256) & 255 #high nibble, 0x300-310 are the usually seen ones
+      frame[6] = proto #default is KWP transport
+      msg = can.Message(arbitration_id=0x200, data=frame, is_extended_id=False)
+      self.send(msg)
+      try:
+        msg = self.framebuf[0x200+dest].get(timeout = .3) #300ms timeout for connect interrogation.
+      except queue.Empty:
+        raise ETIME("Channel Connect timeout")
+      self._unregister(0x200 + dest)
+      blob = msg
+      assert blob[5] & 0x10 == 0, "ECU gave us an invalid TX address?" #shouldn't happen, but trap it if it does.
+      tx = (blob[5] * 256) + blob[4]
+      conn = VWTPConnection(self,tx,callback) #tx is usually 0x740.
+      conn.rx = rx
+      conn.mod_id = dest
+      self.connections[rx] = conn #pin the connection to the RX address we picked.
+      util.log(5,"Connected")
+      conn.open()
+      return conn
 
   def reconnect(self, conn, proto=1):
-    dest = conn.mod_id
+    dest = conn.mod_id #locking is unnecessary here, since we aren't peering into connection structures.
     util.log(5,"Re-connecting to ECU:",hex(dest))
-    self._register(0x200 + dest) #register the response address so we don't drop frames...
     frame = [None] * 7
     frame[0] = dest
     frame[1] = 0xC0 #setup request
     frame[2] = 0
     frame[3] = 0x10 #high nibble of high byte set to invalid
-    frame[4] = 0
-    frame[5] = 0x03 #0x300-310 are the usually seen ones
+    frame[4] = conn.rx
+    frame[5] = (conn.rx / 256) & 0x0F #re-use the RX address we already allocated.
     frame[6] = proto #default is KWP transport
-    msg = can.Message(arbitration_id=0x200, data=frame, is_extended_id=False)
-    self.send(msg)
-    try:
-      msg = self.framebuf[0x200+dest].get(timeout = .2) #200ms timeout for connect interrogation.
-    except queue.Empty:
-      raise ETIME("Reconnect Timeout")
-    self._unregister(0x200 + dest)
+    with self.buflock: #only need to hold this until we unregister link-control, since we're not modifying or using the connection table (RX address already allocated)
+      self._register(0x200 + dest) #register the response address so we don't drop frames...
+      msg = can.Message(arbitration_id=0x200, data=frame, is_extended_id=False)
+      self.send(msg)
+      try:
+        msg = self.framebuf[0x200+dest].get(timeout = .2) #200ms timeout for connect interrogation.
+      except queue.Empty:
+        raise ETIME("Reconnect Timeout")
+      self._unregister(0x200 + dest)
     blob = msg
     assert blob[5] & 0x10 == 0, "ECU gave us an invalid TX address?" #shouldn't happen, but trap it if it does.
     tx = (blob[5] * 256) + blob[4]
@@ -426,3 +443,4 @@ class VWTPStack:
     self.open = False
     if self.recvthread:
       self.recvthread.join()
+      self.recvthread = None

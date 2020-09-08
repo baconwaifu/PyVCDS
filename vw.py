@@ -2,7 +2,7 @@ import kwp
 import can
 import vwtp
 import queue
-import vcds_label #VCDS label file parsing is split off.
+#import vcds_label #VCDS label file parsing is split off.
 import util
 import label
 import time
@@ -64,22 +64,25 @@ class blockMeasure:
 
 scalers = {
 0x1: blockMeasure("/min", lambda a,b: (a*b)/5),
+0x2: blockMeasure("%", lambda a,b: (a*0.002)*b),
 0x4: blockMeasure("°ATDC", lambda a,b: (b-127)*.01*a), #BTDC is expressed as a negative number.
 0x7: blockMeasure("km/h", lambda a,b: .01*a*b),
-0x8: blockMeasure("binary", lambda a,b: (a << 8) | b),
-0x10: blockMeasure("binary", lambda a,b: (a << 8) | b),
+0x8: blockMeasure("binary (0x8)", lambda a,b: hex((a << 8) | b)[2:]), #flag bits? has been correllated with cruse control for 1218
+0x10: blockMeasure("binary (0x10)", lambda a,b: hex((a << 8) | b)[2:]), #KWP1218 has this as a bool for "engine cold" (0 == cold)
 0x11: blockMeasure("ASCII", lambda a,b: bytes([a,b]).decode("ascii")),
 0x12: blockMeasure("mbar", lambda a,b: (a*b)*25),
 0x14: blockMeasure("%", lambda a,b: ((a*b)/128)-1),
 0x15: blockMeasure("V", lambda a,b: (a*b)/1000),
 0x16: blockMeasure("ms", lambda a,b: .001*a*b),
 0x17: blockMeasure("%", lambda a,b: (b*a)/256),
-0x19: blockMeasure("g/s (air)", lambda a,b: (100/a)*b),
+0x18: blockMeasure("Amps", lambda a,b: (0.001*a)*b), #KWP1218; may be incorrect for 2k
+0x19: blockMeasure("g/s (air)", lambda a,b: (100/a)*b), #1218 has this as '(b*1.421)+(a/182)' which *approximately* evaluates to a standard little endian short
 0x1A: blockMeasure("°C", lambda a,b: b-a),
 0x21: blockMeasure("%", lambda a,b: b*100 if a == 0 else (b*100)/a), #same unit, different scaling.
 0x22: blockMeasure("kW", lambda a,b: (b - 128)*.01*a),
 0x23: blockMeasure("/h", lambda a,b: (a*b)/100),
-0x25: blockMeasure("binary", lambda a,b: (a << 8) | b),
+0x24: blockMeasure("km", lambda a,b: (a*2560)+(b*10)), #from KWP 1218
+0x25: blockMeasure("binary (0x25)", lambda a,b: hex((a << 8) | b)[2:]), #coding?
 0x27: blockMeasure("mg/stroke (fuel)", lambda a,b: (a*b)/256),
 0x31: blockMeasure("mg/stroke (air)", lambda a,b: (a*b)/40),
 0x33: blockMeasure("mg/stroke (Δ)", lambda a,b: ((b-128)/255)*a),
@@ -96,7 +99,8 @@ def parseBlock(block, mod=None): #takes a raw KWP response.
   blk = []
   buf = block[2:] #drop the KWP op and param
   idx = 0
-  for i in range(4):
+  try:
+   for i in range(4):
     if buf[idx] in scalers:
       if scalers[buf[idx]].size <=3:
         blk.append(scalers[buf[idx]].unscale(buf[idx+1], buf[idx+2]))
@@ -106,6 +110,8 @@ def parseBlock(block, mod=None): #takes a raw KWP response.
         idx += len(blk[-1])
     else:
       blk.append(scalers[256].unscale(buf[i+1], buf[i+2]))
+  except IndexError:
+    pass #stomp on indexerrors, measuring blocks can be *up to* 4 fields long; some are "8" (need a firmware dump to investigate that...)
   if mod: #don't look up block labels if we just want a basic parse.
     try:
       for i in range(4):
