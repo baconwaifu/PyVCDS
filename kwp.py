@@ -264,15 +264,12 @@ class KWPSession:
     raise ValueError("Checked frame not for us? (Not a negative response *or* the desired response!)")
 
   def close(self):
-<<<<<<< Updated upstream
     if self.exclusive: #if we have an exclusive socket reference, kill it.
       self.transport.close()
-=======
-    self.transport.close() #assume the transport is global
     self.timethread.join()
     self.timethread = None #and leave a flag for the destructor.
     
->>>>>>> Stashed changes
+
   def __enter__(self):
     return self
   def __exit__(self,a,b,c):
