@@ -80,7 +80,15 @@ class VWTPConnection:
 
 if __name__ == "__main__":
   sessions = {}
-  sock = can.interface.Bus(channel="vcan0", bustype="socketcan")
+
+  try:
+    with open("config.json", "r") as fd:
+      opts = json.loads(fd.read())
+  except FileNotFound: #write default config.
+    opts = { "channel":"can0", "bustype":"socketcan"}
+    with open("config.json", 'w') as fd:
+      fd.write(json.dumps(opts))
+  sock = can.interface.Bus(**opts)
   while True:
     msg = sock.recv()
     if not msg.arbitration_id in sessions:

@@ -6,6 +6,7 @@ import vwtp
 import vw
 import struct
 import util
+import json
 
 #SocketCAN "tracer" similar to candump, but decodes higher-level VW protocols as well.
 
@@ -13,7 +14,15 @@ reqmap = {}
 for k,v in kwp.requests.items():
   reqmap[v.num] = k #create a reverse-mapping of request ID to names.
 
-bus = can.interface.Bus(channel="can0", bustype="socketcan")
+try:
+  with open("config.json", "r") as fd:
+    opts = json.loads(fd.read())
+except FileNotFound: #write default config.
+  opts = { "channel":"can0", "bustype":"socketcan"}
+  with open("config.json", 'w') as fd:
+    fd.write(json.dumps(opts))
+
+bus = can.interface.Bus(**opts) #we get the CAN bus information from a local file.
 
 inbound = {} #from car
 outbound = {} #to car

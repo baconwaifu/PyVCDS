@@ -8,4 +8,5 @@ __pycache__/
 pcaps/
 candleLight/
 vag-diag-sim/
-
+#because the bus interface name can vary between contributors.
+config.json
