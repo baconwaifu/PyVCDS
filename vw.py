@@ -118,74 +118,86 @@ def labelBlock(ecu, blknum, blk):
   for i in range(len(blk)):
     blk.label = labels[(ecu,blknum)][i]
 
+#Note: ross-tech IDs seem to diverge from components on CAN-bus vehicles.
+#all commented-out components are potentially divergent ross-tech IDs.
 modules = {
 0x1: "Engine",
 0x2: "Automatic Transmission",
 0x3: "ABS",
-0x4: "Steering",
-0x5: "Security Access",
-0x6: "Passenger Seat",
-0x7: "Front Infotainment",
-0x8: "Climate Control",
-0x9: "Central Electronics",
-0xE: "Media Player 1",
-0xF: "Satillite Radio",
-0x10: "Parking Aid #2",
-0x11: "Engine #2",
-0x13: "Distance Regulation",
-0x14: "Suspension",
-0x15: "Airbags", #no, not *that* kind of airbag. pervert.
-0x16: "Steering",
-0x17: "Instrument Cluster",
-0x18: "Aux Heater", #block heater for diesels?
-0x19: "CAN Gateway", #what you're probably talking to with this!
-0x1B: "Active Steering",
-0x1F: "Identity Controller (?)", #no clue what this is, but the simulator emulates it.
-0x20: "High Beam Assist",
-0x22: "AWD",
-0x25: "Immobilizer", #for the car. not you.
-0x26: "Convertible Top", #again, *for the car*.
-0x29: "Left Headlight",
-0x31: "Diagnostic Interface", #again, what you're probably talking to.
-0x34: "Level Control",
-0x35: "Central Locking", #fun fact: the car knows if a lock is missing!
-0x36: "Driver Seat",
-0x37: "Radio/SatNav",
-0x39: "Right Headlight", #this only has a hamming distance of 1 from the left headlight; probably AND-based CAN bus masking and code re-use...
-0x42: "Driver Door",
-0x44: "Steering Assist",
-0x45: "Interior Monitoring", #what the hell is this?
-0x46: "Comfort System", #no, not *that* kind of "comfort" ya pervert.
-0x47: "Sound System", #what idiots/assholes modifiy to illegally loud levels!
-0x52: "Passenger Door", #again, hamming distance of 1 from driver door.
-0x53: "Parking Brake", #oh hey, that thing that makes it impossible to change the rear pads without a diag tool!
-0x55: "Headlights", #why is this separate from the individual headlights?
-0x56: "Radio",
-0x57: "TV Tuner", #what. why does a car need an OTA TV tuner?
-0x61: "Battery",
-0x68: "Rear Left Door",
-0x65: "TPMS",
-0x67: "Voice Control", #so they have jarvis now?
-0x68: "Wipers",
-0x69: "Trailer Recognition",
-0x72: "Rear Right Door",
-0x75: "Telematics", #"hey, where'd my car go?"
-0x76: "Parking Aid", #Better than a tennis ball on a string!
-0x77: "CarPhone", #yes, some cars do have a built in cellular phone, and yes, they were made post-smartphone.
+#0x4: "Steering",
+#0x5: "Security Access",
+0x5: "Airbags",
+#0x6: "Passenger Seat",
+#0x7: "Front Infotainment",
+#0x8: "Climate Control",
+#0x9: "Central Electronics",
+0x9: "Power Steering",
+#0xE: "Media Player 1",
+#0xF: "Satillite Radio",
+#0x10: "Parking Aid #2",
+#0x11: "Engine #2",
+#0x13: "Distance Regulation",
+#0x14: "Suspension",
+#0x15: "Airbags", #no, not *that* kind of airbag. pervert.
+#0x16: "Steering",
+#0x17: "Instrument Cluster",
+#0x18: "Aux Heater", #block heater for diesels?
+#0x19: "CAN Gateway", #what you're probably talking to with this!
+0x19: "Parking Brake",
+#0x1B: "Active Steering",
+#0x1F: "Identity Controller (?)", #no clue what this is, but the simulator emulates it.
+0x1f: "CAN Gateway",
+#0x20: "High Beam Assist",
+#0x22: "AWD",
+#0x25: "Immobilizer", #for the car. not you.
+#0x26: "Convertible Top", #again, *for the car*.
+#0x29: "Left Headlight",
+#0x31: "Diagnostic Interface", #again, what you're probably talking to.
+#0x34: "Level Control",
+#0x35: "Central Locking", #fun fact: the car knows if a lock is missing!
+#0x36: "Driver Seat",
+#0x37: "Radio/SatNav",
+#0x39: "Right Headlight", #this only has a hamming distance of 1 from the left headlight; probably AND-based CAN bus masking and code re-use...
+#0x42: "Driver Door",
+#0x44: "Steering Assist",
+#0x45: "Interior Monitoring", #what the hell is this?
+#0x46: "Comfort System", #no, not *that* kind of "comfort" ya pervert.
+#0x47: "Sound System", #what idiots/assholes modifiy to illegally loud levels!
+0x4f: "Sirius Satellite Radio",
+#0x52: "Passenger Door", #again, hamming distance of 1 from driver door.
+0x52: "Radio Head Unit"
+#0x53: "Parking Brake", #oh hey, that thing that makes it impossible to change the rear pads without a diag tool!
+#0x55: "Headlights", #why is this separate from the individual headlights?
+#0x56: "Radio",
+#0x57: "TV Tuner", #what. why does a car need an OTA TV tuner?
+#0x61: "Battery",
+#0x68: "Rear Left Door",
+#0x65: "TPMS",
+#0x67: "Voice Control", #so they have jarvis now?
+#0x68: "Wipers",
+#0x69: "Trailer Recognition",
+#0x72: "Rear Right Door",
+#0x75: "Telematics", #"hey, where'd my car go?"
+#0x76: "Parking Aid", #Better than a tennis ball on a string!
+#0x77: "CarPhone", #yes, some cars do have a built in cellular phone, and yes, they were made post-smartphone.
 }
 
 class VWModule:
-  def __init__(self, kwp, mod):
+  def __init__(self, kwp, mod, exc=False):
     self.idx = mod
-    self.name = modules[mod]
+    if mod in modules:
+      self.name = modules[mod]
+    else:
+      self.name = None
     self.pn = None
-    self.name = None
+    self._name = None
     self.kwp = kwp
+    self.exclusive=exc #is our KWP session exclusive to us?
 
   def __str__(self):
     if not self.pn:
       self.readPN()
-    return "{}: \"{}\"".format(self.pn,self.name)
+    return "{}: \"{}\"".format(self.pn,self._name)
 
   def readID(self):
     self.pn = True
@@ -203,13 +215,13 @@ class VWModule:
       util.log(6,"Reading ECU identification...")
       req = self.kwp.request("readEcuIdentification", 0x9B) #Read Part Identification
       pn = req[2:14]
-      self.name = req[0x1c:].decode("ascii").rstrip()
+      self._name = req[0x1c:].decode("ascii").rstrip()
     except kwp.KWPException:
       util.log(5,"Fault retrieving full ID block, falling back to plain part number!")
       req = self.kwp.request("readEcuIdentification", 0x91) #Read raw VAG number
       l = req[2]
       pn = req[3:2+l] #length byte includes itself...
-      self.name = "<Unknown, could not retreive name>"
+      self._name = "<Unknown, could not retreive name>"
 
     buf = bytearray() #expanding the part number is the same for both paths.
     buf += pn[0:3]
@@ -258,10 +270,13 @@ class VWModule:
     #Status 1 and 3 are "supported DTCs", 4 is "most recent" and 0xE0 is "256+ supported DTCs" (for DaimlerChysler); returns a 2-byte count in response (big-endian)
     #the usual "get by status" is repeated N/256 times to get all DTCs.
     #actual status is the highest 3 bits of the status byte, being "indicated" "active" and "stored" in that order. the next bit is "readiness"
-    try: #this mimics the zurich's request pattern for DTCs by "tripped" status.
-      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02, group FF00; "All Tripped Hex DTCs"
-    except kwp.KWPException:
-      req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00, group FF00; "All Tripped J2012 format DTCs"
+    try:
+      try: #this mimics the zurich's request pattern for DTCs by "tripped" status.
+        req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02, group FF00; "All Tripped Hex DTCs"
+      except kwp.EINVAL:
+        req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00, group FF00; "All Tripped J2012 format DTCs"
+    except (kwp.serviceNotSupportedException,kwp.ENOENT):
+      return [] #no DTCs to report...
     dtcs = []
     count = req[1]
     if count > 0:
@@ -300,11 +315,12 @@ class VWModule:
       return
 
   def close(self):
-    pass #no-op; let the context manager handle it for us
+    if self.exclusive: #if we have the only reference to the KWP session, close it.
+      self.kwp.close()
   def __enter__(self): #nothing to do outside of __init__, but we need it here anyways.
     return self
   def __exit__(self,a,b,c):
-    self.kwp.__exit__(a,b,c)
+    self.close()
 
 class VWVehicle:
   def __init__(self, stack):
@@ -313,10 +329,10 @@ class VWVehicle:
     self.parts = {}
     self.scanned = False
 
+  #note: everything that calls this *must* check if already scanned.
+  #this doesn't, to allow for manual rescan.
   def enum(self): #a crude enumeration primitive of all *known* ECUs
     global modules
-    if self.scanned:
-      return
     self.scanned = True
     util.log(5,"Enumerating Modules...")
     for mod in modules.keys():
@@ -328,12 +344,19 @@ class VWVehicle:
         m.close()
         self.enabled.append(mod)
         self.parts[mod] = modules[mod] + " -> " + m.pn
-      except (queue.Empty,ValueError,kwp.KWPException):
-        pass #squash the exception; just means "module not detected"
+      except (vwtp.ETIME) as e:
+        util.log(5,"Module not found:",repr(e)) #squash the exception; just means "module not detected"
+      except (kwp.KWPException) as e: #we connected, but something fucked up.
+        util.log(3,"Communication Fault reading module, assuming it's present:",modules[mod])
+        util.log(3,"Exception:",e)
+        self.enabled.append(mod)
       time.sleep(.2)
 
   def module(self, mod):
-    return VWModule(kwp.KWPSession(self.stack.connect(mod)), mod)
+    #note: the "exc" flag in the KWP session means "close the transport socket automatically"
+    k = kwp.KWPSession(self.stack.connect(mod),exc=True)
+    k.begin(0x89)
+    return VWModule(k, mod)
 
   def __enter__(self):
     return self
@@ -382,15 +405,17 @@ def modmap(car):
   for i in range(1,256):
     try:
       mod = car.module(i)
-      m = str(mod)
-      a = hex(i)[2:]
-      util.log(5,"Found module '{}' at address '{}'".format(m, a))
-      mods[a] = m #get the part number and name.
+      with mod:
+        m = str(mod)
+        a = hex(i)[2:]
+        util.log(5,"Found module '{}' at address '{}'".format(m, a))
+        mods[a] = m #get the part number and name.
     except kwp.KWPException as e: #fault reading part number; means module is there but fucked up.
       util.log(3,"Module Read Error: {}: {}".format(hex(i)[2:],e))
     except (ValueError, queue.Empty): #fault connecting to module
-      util.log(6,"Module connect timeout:",hex(i)[2:])
+      util.log(5,"Module connect timeout:",hex(i)[2:])
     time.sleep(.1) #give the gateway time to reset between timeouts
+  return mods
 
 if __name__ == "__main__":
   import json,jsonpickle
@@ -410,10 +435,16 @@ if __name__ == "__main__":
     fd.write(json.dumps(mods,indent=4)) #is all primitives, so jsonpickle is not needed here.
 
   m = { "readDataByLocalIdentifier": range(1,256), "readEcuIdentification": range(1,256), "readDataByCommonIdentifier": range(1,65535) }
-  for k in m.keys():
-    m[k] = brutemap(stack, 3, k, m[k])
+  fault = None
+  try:
+    for k in m.keys():
+      m[k] = brutemap(stack, 3, k, m[k])
+  except Exception as e: #simply used for cleanup.
+    fault = e
   fd = open("map-{}.json".format(hex(3)[2:]), "w")
   fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4)) #jsonpickle allows serializing every type, but no pretty-printing. so we re-load it and re-dump it.
   fd.close()
   print("Done.")
+  if fault:
+    raise fault
   import sys; sys.exit(0) #need to do this because of threads.

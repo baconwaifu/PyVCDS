@@ -97,10 +97,17 @@ class VWTPConnection:
       if self.seq == 0x10:
         self.seq = 0
       if not self.inbuf: #first frame of a transaction
-        self.inlen = struct.unpack(">H", buf[0:2])[0]
+        try:
+          self.inlen = struct.unpack(">H", buf[0:2])[0]
+        except struct.error:
+          util.log(3,"Short frame recieved:",frame)
+          self.inlen = -1
         util.log(6,"VWTP transmission start from {}, len {}".format(frame.arbitration_id,self.inlen))
         self.inbuf = bytearray()
-        self.inbuf += buf[2:] #because bytearray.
+        if self.inlen > 0:
+          self.inbuf += buf[2:] #because bytearray.
+        else:
+          self.inbuf += buf
       else:
         util.log(6,"VWTP subframe from ",frame.arbitration_id)
         self.inbuf += buf
@@ -155,7 +162,13 @@ class VWTPConnection:
         util.log(5,"VWTP 'Message Complete' from {}, KWP decoding follows:".format(frame.arbitration_id))
         if self.outlen != len(self.outbuf):
           util.log(3,"WARN: frame length mismatch! expected {}, got {}. Attempting to continue...".format(self.outlen, len(self.outbuf)))
-        self._xmit(bytes(self.outbuf))
+        try:
+          self._xmit(bytes(self.outbuf))
+        except Exception as e:
+          util.log(3,"Error parsing buffer: {}",e)
+          util.log(3,"Problem Frame:",self.outbuf)
+          if type(e) not in (struct.Error,): #add context, but only warn about struct errors.
+            raise e
         self.outbuf = None
   def close(self):
     global inbound, outbound

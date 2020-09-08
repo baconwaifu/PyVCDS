@@ -87,5 +87,8 @@ if args.vin:
   print("NOTE: this still identifies the exact *model* of car, just not the exact *car*")
   sys.exit(0)
 
-while True:
-  main()
+try:
+  while True:
+    main()
+except KeyboardInterrupt:
+  pass #squash this so it doesn't clutter the output.

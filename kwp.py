@@ -4,6 +4,7 @@ import threading
 import queue
 import time
 import util
+import vwtp
 
 #methods are stateless; used for metadata storage only.
 class KWPRequest:
@@ -171,7 +172,7 @@ def timeout(sess, timeout):
     if sess.transport._open: #implemenation detail; TODO: change that.
       try:
         sess.request("testerPresent")
-      except (ValueError, ETIME, serviceNotSupportedException): #also catch "Service Not Supported" and bail.
+      except (ETIME, serviceNotSupportedException, vwtp.VWTPException): #also catch "Service Not Supported" and bail.
         return #catch the "tried to send to closed connection" message and kill the thread cleanly.
     else:
       return
@@ -182,11 +183,13 @@ framelock = threading.Lock()
 
 
 class KWPSession:
-  def __init__(self, transport):
+  def __init__(self, transport, exc=False):
     self.transport = transport
     self.timethread = threading.Thread(target=timeout, args=(self,2))
     self.mfrsrv = {}
     self.mfrresp = {}
+    self.exclusive = exc
+
   def mfr(self,service,resp):
     self.mfrsrv = service
     self.mfrresp = resp
@@ -236,17 +239,19 @@ class KWPSession:
     if resp[0] == 0x7F:
       util.log(5,"Got Negative response:",resp)
       if resp[2] == 0x21 or resp[2] == 0x23: #repeat the request; either busy or "not done yet"
-        raise EAGAIN
+        raise EAGAIN("EAGAIN")
       elif resp[2] == 0x78: #"Response Pending"
-        raise EWAIT
+        raise EWAIT("EWAIT")
       elif resp[2] == 0x33:
-        raise EPERM #TODO: add authentication support, and check that.
+        raise EPERM("EPERM") #TODO: add authentication support, and check that.
       elif resp[2] == 0x31:
-        raise ENOENT
+        raise ENOENT("ENOENT")
       elif resp[2] == 0x35:
-        raise EAUTH
+        raise EAUTH("EAUTH")
       elif resp[2] == 0x12:
-        raise EINVAL
+        raise EINVAL("EINVAL")
+      elif resp[2] == 0x11:
+        raise serviceNotSupportedException("serviceNotSupported")
       msg = "<Unknown response {}>".format(hex(resp[2]))
       if resp[2] in responses:
         msg = responses[resp[2]] #give us the error's name.
@@ -259,7 +264,8 @@ class KWPSession:
     raise ValueError("Checked frame not for us? (Not a negative response *or* the desired response!)")
 
   def close(self):
-    pass
+    if self.exclusive: #if we have an exclusive socket reference, kill it.
+      self.transport.close()
   def __enter__(self):
     return self
   def __exit__(self,a,b,c):

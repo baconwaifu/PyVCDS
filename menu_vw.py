@@ -3,6 +3,7 @@ import struct
 import vw
 import kwp
 import vwtp
+import queue
 
 def mod_menu(car):
   mod = menu.dselector({k:v for k,v in vw.modules.items() if k in car.enabled }, "Which Module?")
@@ -55,7 +56,7 @@ def main(sock):
           mod_menu(car)
         elif op == 2:
           if not car.scanned:
-            car.enum() #TODO: persistent `car` instance
+            car.enum()
           for mod in car.enabled:
             print("Checking module '{}'".format(vw.modules[mod]))
             try:
@@ -72,8 +73,8 @@ def main(sock):
                     print("Unknown DTC '{}'".format(d))
             except kwp.EPERM:
               print("Permissions error getting DTCs from module, skipping")
-            except (ValueError, queue.Empty, kwp.KWPException):
-              print("Unknown fault getting DTCs from module, skipping")
+            except (ValueError, queue.Empty, kwp.KWPException) as e:
+              print("Unknown fault getting DTCs from module:",e)
         elif op == 3: #read measuring block
           mods = {}
           for i in car.enabled:
