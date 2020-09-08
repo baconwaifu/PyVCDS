@@ -1,0 +1,11 @@
+*.pdf
+__pycache__/
+*.pcapng
+*.pcap
+*/.DS_Store
+*/*.pyc
+*/*.pcapng
+pcaps/
+candleLight/
+vag-diag-sim/
+
