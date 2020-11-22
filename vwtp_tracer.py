@@ -4,6 +4,7 @@
 import can
 import util
 import struct
+import sniff.vw
 
 #NOTE: this is designed for tracing *RAW VWTP SESSIONS*.
 #there is *NO* higher-level protocol decoding implemented here.
@@ -92,9 +93,13 @@ if __name__ == "__main__":
   while True:
     msg = sock.recv()
     if not msg.arbitration_id in sessions:
-      if msg.arbitration_id > 0x600:
+      if msg.arbitration_id > 0x660:
         sessions[msg.arbitration_id] = VWTPConnection(msg.arbitration_id)
-    if msg.arbitration_id > 0x600:
+    if msg.arbitration_id > 0x660:
       sessions[msg.arbitration_id]._recv(msg)
     else:
-      util.log(6,"Untracked frame from address '{}'".format(msg.arbitration_id))
+      if msg.arbitration_id in sniff.vw.models["3C"]:
+        util.log(5, sniff.vw.models["3C"].repr(msg))
+      else:
+        util.log(6,"Untracked frame from address '{}'".format(msg.arbitration_id))
+
