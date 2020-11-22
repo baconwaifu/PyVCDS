@@ -3,7 +3,11 @@
 import re
 import io
 import threading
-
+#the *hooks* for loading CLB labels exist, but clb.py will *NEVER* be released. write your own.
+try:
+  import clb
+except ImportError:
+  clb = None
 BASEDIR = "."
 
 #Ross-Tech label parser
@@ -96,14 +100,14 @@ class LBLLoader:
             if file.toLower().endsWith(".clb"):
               return CLBLoader.loadLabel(pn, file)
             return loadLabel(pn, file) #found a redirect, load the labels from that.
-        else: #new and old-style labels are identical.
+        else: #new and old-style labels are identical here.
           if tok[0][0] == 'B': #basic setting.
             assert blkmatch.match(tok[0][1:]), "Invalid basic-settings label line?"
           elif tok[0][0] == 'A': #Adaption. useful.
             assert blkmatch.match(tok[0][1:]), "Invalid adaption line?"
           elif tok[0][0] == 'L': #we don't care about the coding helper. also picks up 'LC' (Long-Code)
             pass
-          elif tok[0][0] == 'C' #also coding
+          elif tok[0][0] == 'C': #also coding
             pass
           elif tok[0][0] == 'O':
             util.log(4,"Label file inclusion not implemented; used for partially-obfuscated labels?")
@@ -145,7 +149,7 @@ class LBLLoader:
             
           elif tok[0][0] == 'L': #we don't care about the coding helper.
             pass
-          elif tok[0][0] == 'C' #also coding
+          elif tok[0][0] == 'C': #also coding
             pass
           else: #measuring block
             assert blkmatch.match(tok[0]), "Invalid Label Line?"

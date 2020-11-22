@@ -6,9 +6,14 @@ import threading
 import struct
 import util
 
+#this doesn't build off of the existing ISOTP stack because it
+#has some special needs regarding formatting that the "standalone" stack doesn't handle.
+#also, this came first, before I knew it was actually ISO-TP.
+
 services = {
 
 1: { #Current Data
+0x0: "Supported PIDs", #bitmask, the keys in this dict are the bit number in this (or extended variant) PID's response.
 0x1: "Monitor Status",
 0x2: "Freeze DTC",
 0x3: "Fuel System Status", #enum
@@ -69,20 +74,20 @@ services = {
 0x74: "Turbocharger RPM",
 0xA6: "Odometer", #big-endian u32/10 == km
 },
-2: { #Freeze Frame data, same PIDs as above, but results are from freeze-frame.
+2: { #Freeze Frame data, same PIDs as above, but results are from freeze-frame. TODO: test a few of the above when I get the chance.
 0x2: "Frozen DTC" #BCD.
 },
 3: { #Stored DTCs, no PID required. returns N*6 bytes, and (N+2//3) frames.
 },
 4: { #Clear DTCs, no PID. just *does*.
 },
-5: { #Test results; non-CAN o2 sensors. (We can't use this, since this is CAN-only)
+5: { #Test results; non-CAN o2 sensors. (We can't use this, since this tool is CAN-only)
 },
 6: { #Test results; CAN o2 sensors
 },
-7: { #Pending DTCs (same as 3)
+7: { #Pending DTCs (same behavior as 3)
 },
-8: { #Control systems (manufacturer specific?)
+8: { #Control systems (manufacturer specific? wiki has nothing for this.)
 },
 9: { #Vehicle information; VIN, etc.
 0x00: "Supported PIDs", #bitmask
@@ -95,9 +100,40 @@ services = {
 0x0A: "ECU Name", #20 ASCII bytes, right-padded with NULLs
 0x0B: "Live performance tracking", #same as other, but for compression-ignition
 },
-0x0A: { #Permanent DTCs
+0x0A: { #Permanent DTCs; can't be cleared by hand
 }
 }
+
+### BEGIN PID 1,1 test definitions.
+b_tests = { #key corresponds to bit number.
+0: "Misfire",
+1: "Fuel System",
+2: "Components"
+}
+
+#test definitions for spark engines
+spark_tests = { 
+7: "EGR System",
+6: "Oxygen Sensor Heater",
+5: "Oxygen Sensor",
+4: "A/C Refrigerant",
+3: "Secondary Air System",
+2: "Evap System",
+1: "Heated Catalyst",
+0: "Catalyst"
+}
+#and for compression engines.
+comp_tests = {
+0: "NMHC Catalyst", #may mean "Non-Methane HydroCarbon"? is ammonia for SCR catalysts?
+1: "NOx/SCR Monitor",
+2: "<RESERVED: Contact Maintainer>", #either you have a *really* old ECM, or the standard's been updated to use these.
+3: "Boost Pressure",
+4: "<RESERVED: Contact Maintainer>", #either way, I want to know.
+5: "Exhaust Gas Sensor",
+6: "PM Filter Monitor",
+7: "EGR and/or VVT System"
+}
+## END PID 1,1 test definitions
 
 def recvthread(socket, stack):
   while stack.open:
@@ -105,7 +141,7 @@ def recvthread(socket, stack):
     if msg:
       stack._recv(msg)
 
-class OBD2Message:
+class OBD2Message: #state-keeping for ISO-TP
   def __init__(self, l):
     self._len = l
     self.buf = bytearray()
@@ -121,11 +157,34 @@ class OBD2Message:
     return self._len == len(self.buf)
 
 class OBD2ECU:
-  def __init__(self, interface, pids):
+  def __init__(self, i, interface, pids):
+    self.id = i
     self.interface = interface
     self.pids = pids
   def readPID(self, pid):
-    self.pids[pid] #just a KeyError check.
+    self.pids[pid] #just a KeyError check so we don't annoy an ECU with an invalid request...
+    return self.interface.read(pid, self.id)
+
+class OBD2DTC:
+  def __init__(self, dtc, description):
+    self.dtc = dtc
+    self.description = description
+  def setFreezeData(self, freeze):
+    raise NotImplementedError("Freeze data not well understood yet, will add later.")
+  @staticmethod
+  def getDTCFromBytes(b): #convert the DTC word into the DTC string.
+    dtc = ""
+    t = {
+    0: "P",
+    1: "C",
+    2: "B",
+    3: "U"
+    }
+    dtc += t[b[0] >> 6] #leading char from above table
+    dtc += (b[0] & 0x30) >> 4 #first digit
+    dtc += hex(b[0] & 0x0f)[3:] #and last 3 as BCD (drop leading zero, since hex() pads to full bytes)
+    dtc += hex(b[1])[2:]
+    return dtc
 
 class OBD2Interface:
   def __init__(self, socket):
@@ -141,7 +200,7 @@ class OBD2Interface:
       0x7ED: queue.Queue(),
       0x7EE: queue.Queue()
     }
-    self.framebufs = { #used for multi-frame message reception
+    self.framebufs = { #used for ISO-TP segment buffers.
       0x7E8: None,
       0x7E9: None,
       0x7EA: None,
@@ -154,52 +213,60 @@ class OBD2Interface:
     self.recvthread.start()
     resp = self.readPID(1, 0) #Supported PIDs
     for k,v in resp.items():
-      pids = {}
+      pids = {} #sparse mapping of present PIDs. content doesn't matter, just used as a sparse list.
       pack = struct.unpack(">I", v[3:8])[0]
       for i in range(0x20, 0, -1): #oddly, the highest PID is the lowest bit.
         if (pack & 1) == 1:
           pids[i] = True
         pack = pack >> 1
-      if 0x20 in pids:
-        ext = self.readPID(0x20, k) #*assuming* that this is the "read extented PID" messages?
+      if 0x20 in pids: #we have extended PIDs, so read those too.
+        ext = self.readPID(0x20, k)
         pack = struct.unpack(">I", ext[3:8])[0]
         for i in range(0x40, 0x20, -1): #oddly, the highest PID is the lowest bit.
           if (pack & 1) == 1:
             pids[i] = True
           pack = pack >> 1
-      ecu = OBD2ECU(self, pids)
+      ecu = OBD2ECU(k, self, pids)
       self.ecus[k] = ecu
 
+  #this supports both "dumb" single-frame PID reception and one-sided ISO-TP reception (used for VIN, DTCs, and maybe some other things?)
   def _recv(self, msg):
     global DEBUG
     util.log(6,"Recieved Frame:",msg)
     rx = msg.arbitration_id
-    if rx in self.framebufs:
+    if rx in self.framebufs: #is an OBD-2 related frame, and not spurrious frame from elsewhere.
       util.log(5,"Frame is one we want")
       util.log(6,self.framebufs[rx])
-      if not (self.framebufs[rx] is None):
+      if not (self.framebufs[rx] is None): #should be ISO-TP continuation
         util.log(6,"Frame is multi-part component")
-        assert 0xF0 & msg.data[0] == 0x20 #drop the sequence numbers...
+        assert 0xF0 & msg.data[0] == 0x20 #drop the sequence numbers and assert that it's a continuation frame.
         self.framebufs[rx] += msg.data[1:]
         if self.framebufs[rx].done():
           self.buffers[rx].put(bytes(self.framebufs[rx]))
           self.framebufs[rx] = None
+        elif msg.data[0] & 0x0f == 0x0f:
+          pass #not needed, since we explicitly tell the other end "no need to chunk this" when starting the flow.
+          #flow = can.Message(arbitration_id=(rx - 8),data=[0x30,0,0,0x55,0x55,0x55,0x55,0x55],extended_id=False)
+          #util.log(5,"sending flow control frame...")
+          #self.socket.send(flow)
       else:
         buf = msg.data
-        if buf[0] == 0x10: #long multi-frame message, >7 bytes.
+        if buf[0] & 0xf0 == 0x10: #long multi-frame message, >7 bytes.
           util.log(5,"Frame is multi-part start")
           l = buf[1]
           req = buf[2] - 0x40
           pid = buf[3]
-          dat = OBD2Message(l)
+          dat = OBD2Message(l + ((buf[0] & 0xf) << 8)) #didn't cause problems before, since the VIN is less than 256 characters long...
           util.log(6,dat)
           dat += buf[2:]
           self.framebufs[rx] = dat #prep to recieve more frames.
           util.log(6,dat)
+          #this configures flow control to be as minimal as possible:
+          #unlimited block size (don't expect any ACKs), and a frame interval of 0ms (buffers be fast. and *very* deep.)
           flow = can.Message(arbitration_id=(rx - 8),data=[0x30,0,0,0x55,0x55,0x55,0x55,0x55],extended_id=False)
           util.log(5,"sending flow control frame...")
           self.socket.send(flow) #kick out the flow control frame to tell the ECU that.
-        else: #short frame, <8 bytes.
+        else: #short frame or "uncaught" frame, <8 bytes.
           util.log(5,"Frame is short frame")
           l = buf[0]
           req = buf[1]
@@ -226,11 +293,11 @@ class OBD2Interface:
     util.log(5,"Responses: ",resp)
     resp = resp[2024] #1st ECU, usually the one with the VIN.
     assert resp[0] == 0x49, "wrong response?"
-    assert resp[1] == 0x2, "not the VIN."
+    assert resp[1] == 0x2, "not the VIN?"
     return resp[3:].decode("ASCII") #trust that the first one is correct...
 
   def send(self, tx, data):
-    assert len(data) < 8, "Trying to send more than 8 bytes in a request (does OBD2 allow that?)"
+    assert len(data) < 8, "Trying to send more than 7 bytes in a request is not yet implemented" #TODO: overhaul this to use the ISOTP infrastructure.
     dat = [0x99]*8
     dat[0] = len(data)
     for i in range(len(data)):
