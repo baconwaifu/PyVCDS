@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-#PyVCDS Util script. used to load config files and do per-module logging.
+#PyVCDS Util script. used to load config files and do per-module logging,
 
 import json
 import io
@@ -68,5 +68,4 @@ def log(level, *args):
       print("[{}]".format(levels[level]),*args)
     else:
       print("[{}] [{}]".format(levels[level],modname),*args)
-
 

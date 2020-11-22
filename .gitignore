@@ -10,3 +10,7 @@ candleLight/
 vag-diag-sim/
 #because the bus interface name can vary between contributors.
 config.json
+#to prevent accidentally committing personal extensions.
+clb.py
+#digging around in the zurich's firmware.
+zurich/

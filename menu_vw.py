@@ -10,7 +10,7 @@ def mod_menu(car):
   mod = car.module(int(mod))
   with mod as m:
     while True:
-      op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Load Labels for Module", "Back"])
+      op = menu.selector(["Read Module ID", "Read Manufacturer Info", "Read Firmware Version", "Read Coding", "Re-Code module (EXPERIMENTAL)", "Read Measuring Block", "Load Labels for Module", "Drop to Python Console", "Back"])
       if op == 0:
         try:
           print(m.readID())
@@ -34,8 +34,10 @@ def mod_menu(car):
         if m.pn in vw.labels:
           print("Loaded")
         else:
-          print("Error loading labels")
+          print("Error loading labels: missing or encrypted label file") #again, I *WILL NOT HELP* with decrypting clb labels.
       if op == 7:
+        import pdb; pdb.set_trace()
+      if op == 8:
         break
 
 def main(sock):
