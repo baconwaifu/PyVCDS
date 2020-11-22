@@ -165,13 +165,16 @@ class LBLLoader:
       return None
     return labels
 
-class CLBLoader:
-  @staticmethod
-  def loadLabel(pn, fname):
-    raise NotImplementedError("CLB files are encrypted *for a reason*")
-  @staticmethod
-  def loadNewLabel(pn, fname):
-    raise SyntaxError("CLB files cannot contain new-style labels")
+if not clb: #load a placeholder "not implemented" stub
+  class CLBLoader:
+    @staticmethod
+    def loadLabel(pn, fname):
+      raise NotImplementedError("CLB files are encrypted *for a reason*")
+    @staticmethod
+    def loadNewLabel(pn, fname):
+      raise SyntaxError("CLB files cannot contain new-style labels")
+else: #load the real deal from an external plugin
+  from clb import CLBLoader
 
 def getPath(pn, addr, basedir=BASEDIR):
     path = os.path.join(basedir,"TEST-"+hex(self.idx)[2:]+".LBL") #TEST-AA.LBL
