@@ -51,11 +51,17 @@ def kwp_decode(buf):
       print("VW Measuring block #{}:".format(buf[1]))
       for b in vw.parseBlock(buf):
         print(b)
+    elif buf[0] in kwp_trace.recv: #use kwp_trace to decode anything we don't explicitly handle.
+      print("recv_" + reqmap[buf[0]]) #ecu->diag
+      print(kwp_trace.recv[buf[0]](buf))
     else:
       print("Unable to decode message type. generic as follows:")
       print("KWP response to {}:".format(reqmap[buf[0] - 0x40]), buf)
   else:
-    if kwp.requests[reqmap[buf[0]]].fmt:
+    if buf[0] in kwp_trace.xmit: # diag->ecu
+      print("xmit_" + reqmap[buf[0]])
+      print(kwp_trace.xmit[buf[0]](buf))
+    elif kwp.requests[reqmap[buf[0]]].fmt:
       print("Parameters:",kwp.requests[reqmap[buf[0]]].unpack(buf[1:]))
     else:
       print("Parameters unknown, raw message:",buf)
