@@ -7,6 +7,9 @@ import util
 import label
 import time
 
+#Going off of vag-diag-sim, startRoutineByLocalIdentifier has something relating to measuring blocks with argument 0xb8.
+#it's set to return b'q\xb8\x01\x01\x01\x03\x01\x02\x01\x06\x01\x07\x01\x08\x01\r\x01\x18' when called.
+
 class LabelStorage:
   def __init__(self, path, tree):
     self.backing = tree
@@ -90,7 +93,7 @@ scalers = {
 0x37: blockMeasure("seconds", lambda a,b: (a*b)/200),
 0x51: blockMeasure("°CF", lambda a,b: ((a*11200)+(b*436))/1000), #torsion; check formula.
 0x5E: blockMeasure("Nm", lambda a,b: a*((b/50)-1)), #torque; check formula.
-0x5F: blockMeasure("", lambda b,a: b[1:b[0] + 1], 4), #String, no suffix.
+0x5F: blockMeasure("", lambda a,b: a[1:a[0] + 1].decode("ascii"), 4), #ASCII String, variable length, so A is a bytes() of the whole thing.
 0x100: blockMeasure("[Unknown Unit]", lambda a,b: (a << 8) | b)
 }
 
@@ -106,8 +109,11 @@ def parseBlock(block, mod=None): #takes a raw KWP response.
         blk.append(scalers[buf[idx]].unscale(buf[idx+1], buf[idx+2]))
         idx += 3
       else:
-        blk.append(scalers[buf[idx]].unscale(buf[idx:], None))
-        idx += len(blk[-1])
+        #print(repr(buf))
+        var = scalers[buf[idx]].unscale(buf[idx+1:], None)
+        #print(var)
+        blk.append(var)
+        idx += len(blk[-1].value)
     else:
       blk.append(scalers[256].unscale(buf[i+1], buf[i+2]))
   except IndexError:
@@ -224,7 +230,7 @@ class VWModule:
       self._name = req[0x1c:].decode("ascii").rstrip()
     except kwp.KWPException:
       util.log(5,"Fault retrieving full ID block, falling back to plain part number!")
-      req = self.kwp.request("readEcuIdentification", 0x91) #Read raw VAG number
+      req = self.kwp.request("readEcuIdentification", 0x91) #Read raw VAG number (ECU ID)
       l = req[2]
       pn = req[3:2+l] #length byte includes itself...
       self._name = "<Unknown, could not retreive name>"
@@ -252,6 +258,12 @@ class VWModule:
     util.log(4,"FW version structure parsing not implemented yet; raw message:",blk)
     return NotImplemented
 
+  def readFW(self):
+    import _vw.flash as flash
+    with flash.VWECUFlashInterface(self.kwp, 'r') as flsh:
+      with open('fw.bin', 'wb') as ofd:
+        ofd.write(flsh.read(0x200000)) #2MB.
+
   def getDTC(self): #note: this returns a *different format* to the one below.
     dtcs = {}
     for i in range(256):
@@ -277,7 +289,7 @@ class VWModule:
     #the usual "get by status" is repeated N/256 times to get all DTCs.
     #actual status is the highest 3 bits of the status byte, being "indicated" "active" and "stored" in that order. the next bit is "readiness"
     try:
-      try: #this mimics the zurich's request pattern for DTCs by "tripped" status.
+      try: #this mimics the zurich scanner's request pattern for DTCs by "tripped" status.
         req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x02\xff\x00") #status 02, group FF00; "All Tripped Hex DTCs"
       except kwp.EINVAL:
         req = self.kwp.request("readDiagnosticTroubleCodesByStatus", b"\x00\xff\x00") #status 00, group FF00; "All Tripped J2012 format DTCs"
@@ -342,26 +354,30 @@ class VWVehicle:
     self.scanned = True
     util.log(5,"Enumerating Modules...")
     for mod in modules.keys():
-      try:
-        util.log(5,"Trying Module:",modules[mod])
-        m = self.module(mod)
-        m.readPN()
-        util.log(5,"Found module:",modules[mod],"Part Number:",m.pn)
-        m.close()
-        self.enabled.append(mod)
-        self.parts[mod] = modules[mod] + " -> " + m.pn
-      except (vwtp.ETIME) as e:
-        util.log(5,"Module not found:",repr(e)) #squash the exception; just means "module not detected"
-      except (kwp.KWPException) as e: #we connected, but something fucked up.
-        util.log(3,"Communication Fault reading module, assuming it's present:",modules[mod])
-        util.log(3,"Exception:",e)
-        self.enabled.append(mod)
-      time.sleep(.2)
+      for i in range(3): #try 3 times for each module
+        try:
+          util.log(5,"Trying Module '{}', Try {}".format(modules[mod], i))
+          m = self.module(mod)
+          m.readPN()
+          util.log(5,"Found module:",modules[mod],"Part Number:",m.pn)
+          m.close()
+          self.enabled.append(mod)
+          self.parts[mod] = modules[mod] + " -> " + m.pn
+          break
+        except (vwtp.ETIME) as e:
+          if i == 3: #if it's the last go-round, *then* we log it as "not found"
+            util.log(5,"Module not found:",repr(e)) #squash the exception; just means "module not detected"
+        except (kwp.KWPException) as e: #we connected, but something fucked up.
+          util.log(3,"Communication Fault reading from module, but assuming it's present:",modules[mod])
+          util.log(3,"Exception:",e)
+          self.enabled.append(mod)
+          break
+        time.sleep(.2)
 
   def module(self, mod):
-    #note: the "exc" flag in the KWP session means "close the transport socket automatically"
+    #note: the "exc" flag in the KWP session means "exclusively owned transport socket, close it when you're closed"
     k = kwp.KWPSession(self.stack.connect(mod),exc=True)
-    k.begin(0x89)
+    k.begin(0x89) #0x89 is diag, 0x85 is PROG.
     return VWModule(k, mod)
 
   def __enter__(self):
@@ -409,18 +425,21 @@ def brutemap(stack, ecu, req, r):
 def modmap(car):
   mods = {}
   for i in range(1,256):
-    try:
-      mod = car.module(i)
-      with mod:
-        m = str(mod)
-        a = hex(i)[2:]
-        util.log(5,"Found module '{}' at address '{}'".format(m, a))
-        mods[a] = m #get the part number and name.
-    except kwp.KWPException as e: #fault reading part number; means module is there but fucked up.
-      util.log(3,"Module Read Error: {}: {}".format(hex(i)[2:],e))
-    except (ValueError, queue.Empty): #fault connecting to module
-      util.log(5,"Module connect timeout:",hex(i)[2:])
-    time.sleep(.1) #give the gateway time to reset between timeouts
+    for ii in range(3):
+      try:
+        mod = car.module(i)
+        with mod:
+          m = str(mod)
+          a = hex(i)[2:]
+          util.log(5,"Found module '{}' at address '{}'".format(m, a))
+          mods[a] = m #get the part number and name.
+          break #break the retry loop.
+      except kwp.KWPException as e: #fault reading part number; means module is there but fucked up.
+        util.log(3,"Module Read Error: {}: {}".format(hex(i)[2:],e))
+        break
+      except (ValueError, queue.Empty): #fault connecting to module
+        util.log(5,"Module connect timeout:",hex(i)[2:])
+      time.sleep(.5) #give the gateway time to reset between timeouts
   return mods
 
 if __name__ == "__main__":
@@ -428,29 +447,45 @@ if __name__ == "__main__":
   sock = can.interface.Bus(channel='can0', bustype='socketcan')
   stack = vwtp.VWTPStack(sock)
 
-  car = VWVehicle(stack)
-  print("Connecting to vehicle and enumerating modules, please wait a moment.")
-#  car.enum()
-  print("Modules present:")
-  for k in car.enabled:
-    print(" ",modules[k])
+  with VWVehicle(stack) as car:
+    print("Connecting to vehicle and enumerating modules, please wait a moment.")
+    car.enum()
+    print("Modules present:")
+    for k in car.enabled:
+      print(" ",modules[k])
 
-  util.log(4,"Creating map of all present and enabled modules, please wait.")
-  mods = modmap(car)
-  with open("mods.json", "w") as fd:
-    fd.write(json.dumps(mods,indent=4)) #is all primitives, so jsonpickle is not needed here.
+    util.log(4,"Enumerating Identifiers for all Modules...")
+    mods = modmap(car)
+    with open("mods.json", "w") as fd:
+      fd.write(json.dumps(mods,indent=4)) #is all primitives, so jsonpickle is not needed here.
 
-  m = { "readDataByLocalIdentifier": range(1,256), "readEcuIdentification": range(1,256), "readDataByCommonIdentifier": range(1,65535) }
-  fault = None
-  try:
-    for k in m.keys():
-      m[k] = brutemap(stack, 3, k, m[k])
-  except Exception as e: #simply used for cleanup.
-    fault = e
-  fd = open("map-{}.json".format(hex(3)[2:]), "w")
-  fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4)) #jsonpickle allows serializing every type, but no pretty-printing. so we re-load it and re-dump it.
-  fd.close()
+    for mod in car.enabled:
+      utl.log(4, "Probing Module Identifiers for '{}'".format(modules[mod]))
+      m = { "readDataByLocalIdentifier": range(1,256), "readEcuIdentification": range(1,256), "readDataByCommonIdentifier": range(1,65535) }
+      fault = None
+      try:
+        for k in m.keys():
+          m[k] = brutemap(stack, mod, k, m[k])
+      except BaseException as e: #simply used for cleanup.
+        fault = e
+      if not fault:
+        with car.module(mod) as m: #TODO: add a "risky" mode that enumerates OEM-specific services (which may potentially set off airbags and such)
+          srv = {}
+          util.log(4, "Supported Services...")
+          for s, n in kwp.services.items():
+            if s <= 0x11: #OBD-2, StartSession, and EcuReset. we don't want to poke those.
+              continue
+            try:
+              res = m.kwp.request(s)
+              srv[n] = res
+            except kwp.KWPException as e:
+              if type(e) == kwp.KWPServiceNotSupportedException: #"expected" fault
+                continue
+              srv[n] = str(e) #something's there, but something went to fuck.
+      fd = open("map-{}.json".format(hex(3)[2:]), "w")
+      fd.write(json.dumps(json.loads(jsonpickle.dumps(m)), indent=4)) #jsonpickle allows serializing every type, but no pretty-printing. so we re-load it and re-dump it.
+      fd.close()
   print("Done.")
   if fault:
     raise fault
-  import sys; sys.exit(0) #need to do this because of threads.
+  #import sys; sys.exit(0) #need to do this because of threads.
