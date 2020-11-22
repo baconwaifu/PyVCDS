@@ -79,6 +79,7 @@ class VWTPConnection:
     self.sending = False
     self.fin = queue.Queue()
     self.fault = False
+    self.proto = None
 
   def open(self):
     self._open = True
@@ -95,7 +96,7 @@ class VWTPConnection:
     util.log(5,"Setup message sent, awaiting response.")
     for i in range(6):
       try:
-        self.q.get(timeout=.2) #200ms per setup
+        self.q.get(timeout=.1) #100ms per setup
         break
       except queue.Empty:
         util.log(6,"Retransmit setup...")
@@ -147,6 +148,8 @@ class VWTPConnection:
           "\nTimeout in ms:",self.acktime * 1000,"\nMinimum Interval between frames in ms:",self.packival * 1000,"\nBlock Size:",self.blksize)
       self.q.put(None) #just stuff *something* in there to break the retry loop
     elif op & 0xf0 == 0xB0 or op & 0xf0 == 0x90:
+      if op & 0xf0 == 0x90:
+        util.log(3,"ACK but not ready. this is unhandled, spray and pray!")
       self.acks[op & 0xf] = True #mark the ack in the sequence table
     else: #assume it's a data packet.
       seq = op & 0x0f
@@ -171,7 +174,7 @@ class VWTPConnection:
       else:
         self.framebuf += buf
       if op & 0x10 == 0x10:
-        if self.framelen != len(self.framebuf): #"harmless" fault
+        if self.proto == 1 and self.framelen != len(self.framebuf): #"harmless" fault, but only "valid" on KWP.
           util.log(3,"Frame length mismatch! expected {}, got {}. Attempting to continue...".format(self.framelen, len(self.framebuf)))
           util.log(4,"Problematic Frame data:",struct.pack("<H",self.framelen) + self.framebuf)
         self.recv(bytes(self.framebuf))
@@ -242,7 +245,8 @@ class VWTPConnection:
       self.reconnect()
     self.sending = True
     mv = msg
-    mv = struct.pack(">H",len(mv)) + mv #prepend the length field to the buffer before splitting it apart.
+    if proto == 1: #for KWP only, prepend the length field to the buffer before splitting it apart.
+      mv = struct.pack(">H",len(mv)) + mv 
     buf = []
     for i in range(0, (len(mv) + 6) // 7, 7): #round up
       buf.append(mv[i:i+7])
@@ -310,7 +314,7 @@ class VWTPStack:
     self.open = True
     #frame buffers and connection table modifications are behind this lock.
     self.buflock = threading.Lock()
-    self.addrs = {0x300:None, 0x301:None, 0x302:None,0x303:None}
+    self.next = 0x300
 
     if sync:
       #socket is synchronous, start the listener thread.
@@ -368,11 +372,17 @@ class VWTPStack:
     rx = None
     self._register(0x200 + dest) #this needs to be outside the lock, because it uses it itself.
     with self.buflock: #yes, the whole connection is inside the lock; mostly for concurrency issues.
-      for addr in range(0x300, 0x310):
-        if not addr in self.connections:
-          rx = addr
-      if not rx:
-        raise VWTPException("Unable to allocate RX channel")
+      addr = self.next
+      idx = 0
+      while addr in self.connections: #if the chosen address is in-use, cycle it.
+        addr += 1
+        if addr == 0x310:
+          addr = 0x300
+        idx += 1
+        if idx == 11:
+          raise VWTPException("No free RX channels")
+      self.next = addr + 1 if addr != 0x30f else 0x300
+      rx = addr
       #self._register(0x200 + dest) #register the response address so we don't drop frames...
       frame = [None] * 7
       frame[0] = dest
@@ -390,6 +400,8 @@ class VWTPStack:
         raise ETIME("Channel Connect timeout")
       self._unregister(0x200 + dest)
       blob = msg
+      assert blob[0] == dest, "Recieved connect response for different module? {}".format(blob[0]) #how would this even be *possible*? should still catch it though.
+      assert blob[1] == 0xd0, "Negative or invalid response to connect: {}".format(blob[1]) #invalid or negative connect response.
       assert blob[5] & 0x10 == 0, "ECU gave us an invalid TX address?" #shouldn't happen, but trap it if it does.
       tx = (blob[5] * 256) + blob[4]
       conn = VWTPConnection(self,tx,callback) #tx is usually 0x740.
@@ -397,9 +409,20 @@ class VWTPStack:
       conn.mod_id = dest
       self.connections[rx] = conn #pin the connection to the RX address we picked.
       util.log(5,"Connected")
+      conn.proto = proto #inform the connection object what "quirks" it needs to apply.
       conn.open()
       return conn
 
+  def _connect(self, rx, tx, proto=None, callback=None):
+    util.log(5, "Opening pre-established communication channel...")
+    VWTPConnection(self, tx, callback)
+    conn.rx = rx
+    conn.proto = proto #inform connection structure which quirks to apply.
+    with self.buflock:
+      self.connections[rx] = conn
+    conn.open()
+    util.log(5, "Opened.")
+    return conn
   def reconnect(self, conn, proto=1):
     dest = conn.mod_id #locking is unnecessary here, since we aren't peering into connection structures.
     util.log(5,"Re-connecting to ECU:",hex(dest))
