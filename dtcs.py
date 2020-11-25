@@ -23,7 +23,7 @@ import util
 #Network: Same
 
 
-#interface designed so that internet DTC lookups can be hooked in.
+#interface designed so that internet DTC lookups can be called in the future
 class DTCProvider:
   def query(self, dtc):
     raise NotImplementedError("DTCProvider cannot be called directly")
@@ -50,7 +50,6 @@ class JSONDTCProvider(DTCProvider):
     return "<Unknown OEM DTC>"
   
 #relevant schema: 'dtc' column is DTC "text" form, and 'en' column is DTC description (in english)
-#TODO: simplify the database to something that's *consistent*...
 class SQLiteDTCProvider(DTCProvider):
   def __init__(self, path, manufacturer=None):
     self.db = sqlite3.open(path)
