@@ -9,6 +9,7 @@ import Crypto.Cipher as Cipher
 #and in cases the privkey is known (such as due to a sony-level nonce-reuse fuckup with ECDSA) it shall be the second element of the
 #tuple.
 
+#a: Infineon TriCore ECU firmware encryption key/iv.
 simos18 = {
  "a": (binascii.unhexlify('98D31202E48E3854F2CA561545BA6F2F'), binascii.unhexlify('E7861278C508532798BCA4FE451D20D1'))
 }

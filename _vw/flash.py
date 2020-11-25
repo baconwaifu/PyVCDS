@@ -56,7 +56,7 @@ class VWECUFlashInterface:
     out = bytearray()
     while size < l:
       try:
-        buf = self.kwp.request("transferData", b'')[2:] #no arguments if using it for upload.
+        buf = self.kwp.request("transferData", b'')[2:] #no arguments if using it for upload from ECU.
       except KWPException as e:
         if str(e) == "transferAborted":
           util.log(5, "Transfer Aborted by ECU")
