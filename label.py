@@ -165,28 +165,40 @@ class LBLLoader:
       return None
     return labels
 
+#note: these do the same thing as VCDS: they decrypt the clb to a LBL file.
+#this allows re-using the above LabelLoader stuff, by recursively calling it with the newly decrypted label.
 if not clb: #load a placeholder "not implemented" stub
   class CLBLoader:
     @staticmethod
     def loadLabel(pn, fname):
-      raise NotImplementedError("CLB files are encrypted *for a reason*")
+      raise NotImplementedError("No CLB decryptor available")
     @staticmethod
     def loadNewLabel(pn, fname):
-      raise SyntaxError("CLB files cannot contain new-style labels")
+      raise SyntaxError("No CLB decryptor available")
 else: #load the real deal from an external plugin
   from clb import CLBLoader
 
 def getPath(pn, addr, basedir=BASEDIR):
+    #these are almost *certainly* not encrypted, as ross-tech doesn't ship experimental label files.
     path = os.path.join(basedir,"TEST-"+hex(self.idx)[2:]+".LBL") #TEST-AA.LBL
     if os.path.exists(path):
       return loadLabel(pn, path)
     path = os.path.join(basedir,part+".LBL") #XXX-XXX-XXX-XX.LBL
     if os.path.exists(path):
       return loadLabel(pn, path)
+    path = os.path.join(basedir,part+".clb")
+    if os.path.exists(path):
+      return CLBLoader.loadLabel(pn, path)
     path = os.path.join(basedir,part[:12]+".LBL") #drop the suffix letters
     if os.path.exists(path):
       return loadLabel(pn, path)
+    path = os.path.join(basedir,part[:12]+".clb")
+    if os.path.exists(path):
+      return CLBLoader.loadLabel(pn, path)
     path = os.path.join(basedir,part[:2]+"-"+hex(self.idx)[2:]+".LBL") #AA-XX.LBL
     if os.path.exists(path):
       return loadNewLabel(pn, path) #Note: this uses new-style redirects.
+    path = os.path.join(basedir,part[:2]+"-"+hex(self.idx)[2:]+".clb")
+    if os.path.exists(path):
+      return CLBLoader.loadNewLabel(pn, path)
     return None #no known label.

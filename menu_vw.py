@@ -25,13 +25,13 @@ def mod_menu(car):
       if op == 4:
         raise NotImplementedError("Writing module coding is currently unavailable")
       if op == 5:
-        pass
+        raise NotImplementedError("Reading measuring blocks from the menu is currently unsupported")
       if op == 6:
-        if not m.pn:
+        if not m.pn: #we need to know the part number of the ECU before we can know it's label file.
           m.readPN()
         path = input("Enter label directory path:\n> ")
         vw.labels.setpath(path)
-        if m.pn in vw.labels:
+        if m.pn in vw.labels: #there's more to this behind the scenes; it will transparently attempt to load labels on the fly when called for
           print("Loaded")
         else:
           print("Error loading labels: missing or encrypted label file") #again, I *WILL NOT HELP* with decrypting clb labels.

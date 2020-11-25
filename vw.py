@@ -25,6 +25,9 @@ class LabelStorage:
   def setpath(self, path):
     label.BASEDIR = path #set the base search directory.
 
+#the LabelStorage object we use for looking up VW labels; functions as a cache for
+#reading ross-tech labels as well. if the label path is initialized, it will attempt
+#to find and load the appropriate label file from the ross-tech label directory.
 labels = LabelStorage("~/.pyvcds/labels/labels.json", label.LazyLabel())
 
 try:
