@@ -1,1 +1,3 @@
+pycrypto==2.6.1
 python-can==3.3.4
+sa2-seed-key==0.0.1
