@@ -1,5 +1,7 @@
 # PyVCDS
 
+ARCHIVAL NOTICE: Development is indefinitely suspended as I no longer own a vehicle for testing against. Feel free to fork this or use it as a starting point for a different implementation.
+
 PyVCDS is an attempt at implementing an open-source and cross-platform alternative to VCDS, using information that is freely available on the internet, and experimentation on an old (2007...) VW.
 
 first off, the usual NO WARRANTY EXPRESSED OR IMPLIED, INCLUDING MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE  
